@@ -105,6 +105,7 @@ frontend/               React + Vite + TS
 Dockerfile              multi-stage：构建前端 → 非 root Python 运行时
 docker-compose.yml      单容器 + 两个数据卷
 openspec/               规格驱动开发（proposal / specs / design / tasks）
+docs/HANDOFF.md         交接文档：产物索引、不可破坏的约定、下一步建议
 ```
 
 ## 设计说明
