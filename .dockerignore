@@ -1,0 +1,12 @@
+.git
+.venv
+**/.venv
+node_modules
+**/node_modules
+frontend/dist
+data
+novels
+.superpowers
+.claude
+*.md
+!README.md

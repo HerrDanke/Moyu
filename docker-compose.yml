@@ -1,0 +1,16 @@
+services:
+  moyu:
+    build: .
+    image: moyu:latest
+    container_name: moyu
+    # 默认只绑定本机（安全）；要公网访问，在 .env 里设 BIND_HOST=0.0.0.0
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-8000}:8000"
+    environment:
+      ACCESS_PASSWORD: ${ACCESS_PASSWORD:-changeme}
+      SECRET_KEY: ${SECRET_KEY:-please-change-me}
+      TYPING_SPEED: ${TYPING_SPEED:-1.0}
+    volumes:
+      - ./data:/data
+      - ./novels:/novels
+    restart: unless-stopped
