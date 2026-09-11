@@ -9,6 +9,7 @@ from ..deps import get_db, require_session
 from ..models import Chapter
 from ..schemas import SearchHit, SearchResult
 from ..services import store
+from ..services.chat_engine import escape_like
 
 router = APIRouter(
     prefix="/api/search", tags=["search"], dependencies=[Depends(require_session)]
@@ -30,10 +31,13 @@ def search(
         target_id = book.id if book else None
     if target_id is None:
         return SearchResult(book_id=None, query=q, hits=[])
-    # 参数化绑定：keyword 仅作为绑定参数传入，不做字符串拼接
+    # 参数化绑定 + 转义 LIKE 通配符（keyword 仅作绑定参数）
     chapters = session.scalars(
         select(Chapter)
-        .where(Chapter.book_id == target_id, Chapter.title.like(f"%{keyword}%"))
+        .where(
+            Chapter.book_id == target_id,
+            Chapter.title.like(f"%{escape_like(keyword)}%", escape="\\"),
+        )
         .order_by(Chapter.index_no.asc())
         .limit(50)
     ).all()

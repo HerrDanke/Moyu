@@ -13,9 +13,16 @@ from .router import auth, books, chat, progress, search
 
 
 class SPAStaticFiles(StaticFiles):
-    """未知路径回退到 index.html，支持前端深层路由刷新。"""
+    """未知路径回退到 index.html，支持前端深层路由刷新。
+
+    但 /api/* 的未知路径必须保持 404（不能返回 HTML，否则前端会误判成功）。
+    """
 
     async def get_response(self, path: str, scope):  # type: ignore[override]
+        # 注意：path 由 StaticFiles 归一化，Windows 上分隔符是 "\"，且可能带前导斜杠
+        normalized = path.replace("\\", "/").lstrip("/")
+        if normalized == "api" or normalized.startswith("api/"):
+            raise StarletteHTTPException(status_code=404)
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
@@ -27,8 +34,21 @@ class SPAStaticFiles(StaticFiles):
         return response
 
 
+INSECURE_SECRETS = {"", "dev-secret-change-me", "please-change-me", "changeme", "change-me"}
+
+
+def _assert_secure_config(settings: Settings) -> None:
+    """配置了访问密码却使用默认/空密钥时，拒绝启动（否则可伪造 Cookie 绕过鉴权）。"""
+    if settings.access_password and settings.secret_key in INSECURE_SECRETS:
+        raise RuntimeError(
+            "检测到 ACCESS_PASSWORD 已启用但 SECRET_KEY 为默认值/空值。"
+            "请设置一个足够随机的 SECRET_KEY（见 .env.example），否则会话可被伪造。"
+        )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    _assert_secure_config(settings)
     settings.ensure_dirs()
 
     app = FastAPI(title="Moyu", version="0.1.0")

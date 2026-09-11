@@ -1,6 +1,9 @@
 """settings 键值存储 + 「当前书」解析。"""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -60,7 +63,11 @@ def write_progress(
     *,
     conditional_from: int | None = None,
 ) -> bool:
-    """写阅读进度。conditional_from 非空时做乐观锁：当前值不匹配则跳过写入。"""
+    """写阅读进度。
+
+    conditional_from 非空时做**原子 CAS**（UPDATE ... WHERE chapter_index = 旧值），
+    并发下只有一次推进生效，避免多标签页重复推进导致丢更新。
+    """
     existing = session.get(Progress, book_id)
     if existing is None:
         try:
@@ -70,13 +77,25 @@ def write_progress(
             session.commit()
             return True
         except IntegrityError:
-            # 并发下另一个会话已插入同一本书的进度，转为更新
+            # 并发下另一会话已插入同一本书的进度，转为更新
             session.rollback()
             existing = session.get(Progress, book_id)
-    if existing is None:
-        return False
-    if conditional_from is not None and existing.chapter_index != conditional_from:
-        return False
+        if existing is None:
+            return False
+
+    if conditional_from is not None:
+        result = session.execute(
+            update(Progress)
+            .where(Progress.book_id == book_id, Progress.chapter_index == conditional_from)
+            .values(
+                chapter_index=chapter_index,
+                chapter_offset=offset,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        session.commit()
+        return result.rowcount > 0
+
     existing.chapter_index = chapter_index
     existing.chapter_offset = offset
     session.commit()

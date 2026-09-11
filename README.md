@@ -17,14 +17,18 @@
 
 ```bash
 cp .env.example .env
-# 编辑 .env：至少改掉 ACCESS_PASSWORD 和 SECRET_KEY
+# 编辑 .env：必须设置 ACCESS_PASSWORD 与一个随机的 SECRET_KEY（否则容器拒绝启动）
 docker compose up -d --build
 ```
 
 浏览器打开 `http://localhost:8000`，输入访问密码，导入一个 TXT 小说，然后说「下一章」。
 
 - 默认仅绑定 `127.0.0.1`（本机可访问）。要对外提供，在 `.env` 设 `BIND_HOST=0.0.0.0`，**并务必设置强密码**，建议再套一层反向代理鉴权。
-- 数据持久化在 `./data`（SQLite）与 `./novels`（原文备份）。
+- 数据存在 Docker 命名卷 `moyu-data`（SQLite）与 `moyu-novels`（原文备份）中：
+  `docker volume inspect moyu_moyu-data` 查看位置，`docker compose down` 不会删除它们。
+- 若想改用宿主目录绑定挂载，把 compose 里的 `moyu-data:/data` 换成 `./data:/data`，
+  并先确保目录属主为容器用户：`mkdir -p data novels && sudo chown -R 10001:10001 data novels`
+  （否则非 root 容器无法写入，会启动失败）。
 
 ## 本地开发
 
@@ -64,13 +68,14 @@ cd frontend && npm run test:e2e
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `ACCESS_PASSWORD` | 空 | 访问密码；为空则不校验（仅建议本地） |
-| `SECRET_KEY` | dev 值 | 会话 Cookie 签名密钥，务必修改 |
+| `SECRET_KEY` | dev 值 | 会话 Cookie 签名密钥，**必改**；启用密码却用默认值会拒绝启动 |
+| `COOKIE_SECURE` | false | 经 HTTPS 反代访问时设为 true |
 | `PORT` | 8000 | 对外端口 |
 | `BIND_HOST` | 127.0.0.1 | compose 绑定的宿主地址 |
 | `DATA_DIR` | ./data | SQLite 存放目录 |
 | `NOVEL_DIR` | ./novels | 导入原文备份目录 |
 | `STATIC_DIR` | ./frontend/dist | 前端产物目录 |
-| `TYPING_SPEED` | 1.0 | 打字机速度，越大越快 |
+| `TYPING_SPEED` | 1.0 | 打字机速度，越大越快；`0` 表示不节流 |
 
 ## 支持的聊天指令
 

@@ -36,3 +36,12 @@ def test_login_then_access(tmp_path):
 def test_no_password_configured_is_open(tmp_path):
     client = _client(tmp_path, "")
     assert client.get("/api/books").status_code == 200
+
+
+def test_non_ascii_password_does_not_500(tmp_path):
+    client = _client(tmp_path, "中文密码口令")
+    # 错误密码
+    assert client.post("/api/auth/login", json={"password": "错的"}).status_code == 401
+    # 正确密码不应因编码问题抛 500
+    assert client.post("/api/auth/login", json={"password": "中文密码口令"}).status_code == 200
+    assert client.get("/api/books").status_code == 200

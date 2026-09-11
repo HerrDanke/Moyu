@@ -16,8 +16,16 @@ export class ApiError extends Error {
   }
 }
 
-async function handle<T>(resp: Response): Promise<T> {
+let unauthorizedHandler: (() => void) | null = null;
+
+/** 注册全局 401 处理（会话过期时回到登录页）。 */
+export function onUnauthorized(fn: () => void): void {
+  unauthorizedHandler = fn;
+}
+
+async function handle<T>(resp: Response, opts: { auth?: boolean } = {}): Promise<T> {
   if (!resp.ok) {
+    if (resp.status === 401 && !opts.auth) unauthorizedHandler?.();
     let detail = resp.statusText;
     try {
       const body = await resp.json();
@@ -45,6 +53,7 @@ export async function login(password: string): Promise<void> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
     }),
+    { auth: true },
   );
 }
 
@@ -68,6 +77,13 @@ export async function deleteBook(id: number): Promise<void> {
 
 export async function getChapters(bookId: number): Promise<ChapterMeta[]> {
   return handle(await fetch(`${BASE}/api/books/${bookId}/chapters`));
+}
+
+/** 告诉后端「当前书」，保证对话引擎与前端显示一致。 */
+export async function selectBook(bookId: number): Promise<void> {
+  await handle(
+    await fetch(`${BASE}/api/books/${bookId}/select`, { method: "POST" }),
+  );
 }
 
 export async function getProgress(bookId: number): Promise<Progress> {

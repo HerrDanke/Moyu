@@ -8,7 +8,9 @@ import {
   listBooks,
   login,
   logout,
+  onUnauthorized,
   patchProgress,
+  selectBook,
   streamChat,
 } from "./api/client";
 import type { Book, ChapterMeta, ChatMessage, Progress } from "./types";
@@ -41,11 +43,21 @@ export default function App() {
 
   const abortRef = useRef<(() => void) | null>(null);
   const lastPatchRef = useRef(0);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const currentIdRef = useRef<number | null>(null);
+
+  messagesRef.current = messages;
+  currentIdRef.current = currentId;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  // 会话过期时回到登录页
+  useEffect(() => {
+    onUnauthorized(() => setAuth("login"));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -66,6 +78,7 @@ export default function App() {
       const saved = Number(localStorage.getItem(BOOK_KEY));
       const initial = list.find((b) => b.id === saved)?.id ?? list[0]?.id ?? null;
       setCurrentId(initial);
+      if (initial != null) void selectBook(initial).catch(() => {});
     })();
   }, [auth]);
 
@@ -107,10 +120,14 @@ export default function App() {
     setMessages([]);
   };
 
-  const selectBook = (id: number | null) => {
+  /** 切换当前书：同时同步到后端，保证对话引擎与界面一致。 */
+  const chooseBook = useCallback((id: number | null) => {
     setCurrentId(id);
-    if (id != null) localStorage.setItem(BOOK_KEY, String(id));
-  };
+    if (id != null) {
+      localStorage.setItem(BOOK_KEY, String(id));
+      void selectBook(id).catch(() => {});
+    }
+  }, []);
 
   const handleImport = async (file: File) => {
     setBusy(true);
@@ -118,7 +135,7 @@ export default function App() {
       const res = await importBook(file);
       const list = await listBooks();
       setBooks(list);
-      selectBook(res.book_id);
+      chooseBook(res.book_id);
       setMessages([
         {
           id: crypto.randomUUID(),
@@ -148,7 +165,7 @@ export default function App() {
       await deleteBook(id);
       const list = await listBooks();
       setBooks(list);
-      selectBook(list[0]?.id ?? null);
+      chooseBook(list[0]?.id ?? null);
       setMessages([]);
     } finally {
       setBusy(false);
@@ -179,11 +196,29 @@ export default function App() {
         text,
         (ev) => {
           switch (ev.type) {
+            case "book":
+              // 服务端认定的「当前书」可能与前端不同（例如「读《x》」）
+              setCurrentId(ev.id);
+              localStorage.setItem(BOOK_KEY, String(ev.id));
+              update({ bookId: ev.id });
+              break;
+            case "meta":
+              update((prev) => ({
+                ...prev,
+                startOffset: ev.start_offset,
+                charCount: ev.char_count,
+              }));
+              break;
             case "thinking":
               update((prev) => ({ ...prev, thinking: ev.text }));
               break;
             case "title":
-              update((prev) => ({ ...prev, text: ev.text + "\n\n", thinking: undefined }));
+              update((prev) => ({
+                ...prev,
+                text: ev.text + "\n\n",
+                bodyStart: ev.text.length + 2,
+                thinking: undefined,
+              }));
               break;
             case "chunk":
               update((prev) => ({ ...prev, text: prev.text + ev.text, thinking: undefined }));
@@ -201,7 +236,7 @@ export default function App() {
       abortRef.current = abort;
       await done;
       update({ streaming: false });
-      await refreshProgress(currentId);
+      await refreshProgress(currentIdRef.current);
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         update({ streaming: false });
@@ -220,15 +255,27 @@ export default function App() {
     setMessages((m) => m.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
   };
 
-  const handleProgressReport = useCallback(
-    (revealedLength: number) => {
-      const now = Date.now();
-      if (currentId == null || now - lastPatchRef.current < 1000) return;
-      lastPatchRef.current = now;
-      void patchProgress(currentId, { chapter_offset: revealedLength }).catch(() => {});
-    },
-    [currentId],
-  );
+  /**
+   * 上报续读偏移：只按「章节正文字符数」计算，剔除标题与收尾文案，
+   * 且只在该消息所属书 == 当前书时才上报。
+   */
+  const handleProgressReport = useCallback((messageId: string, revealed: number) => {
+    const msg = messagesRef.current.find((m) => m.id === messageId);
+    if (!msg || msg.startOffset === undefined || msg.charCount === undefined) return;
+    const bookId = msg.bookId ?? currentIdRef.current;
+    if (bookId == null || bookId !== currentIdRef.current) return;
+
+    const bodyStart = msg.bodyStart ?? 0;
+    const bodyLen = Math.max(0, msg.charCount - msg.startOffset);
+    const revealedBody = Math.max(0, Math.min(revealed - bodyStart, bodyLen));
+    if (revealedBody <= 0) return;
+
+    const now = Date.now();
+    if (now - lastPatchRef.current < 1000) return;
+    lastPatchRef.current = now;
+    const offset = msg.startOffset + revealedBody;
+    void patchProgress(bookId, { chapter_offset: offset }).catch(() => {});
+  }, []);
 
   const currentBook = useMemo(
     () => books.find((b) => b.id === currentId) ?? null,
@@ -271,7 +318,7 @@ export default function App() {
         <BookSelector
           books={books}
           currentId={currentId}
-          onSelect={selectBook}
+          onSelect={chooseBook}
           onImport={handleImport}
           onDelete={handleDelete}
           busy={busy}

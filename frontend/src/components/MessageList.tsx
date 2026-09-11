@@ -5,7 +5,7 @@ import { useTypingEffect } from "../hooks/useTypingEffect";
 interface BubbleProps {
   message: ChatMessage;
   animate: boolean;
-  onProgress?: (revealedLength: number) => void;
+  onProgress?: (messageId: string, revealedLength: number) => void;
 }
 
 function AssistantBubble({ message, animate, onProgress }: BubbleProps) {
@@ -15,8 +15,8 @@ function AssistantBubble({ message, animate, onProgress }: BubbleProps) {
   const showThinking = message.streaming && !shown && !!message.thinking;
 
   useEffect(() => {
-    if (typing && onProgress) onProgress(shown.length);
-  }, [shown.length, typing, onProgress]);
+    if (typing && onProgress) onProgress(message.id, shown.length);
+  }, [shown.length, typing, message.id, onProgress]);
 
   return (
     <div className="msg assistant">
@@ -53,7 +53,7 @@ function UserBubble({ message }: { message: ChatMessage }) {
 interface Props {
   messages: ChatMessage[];
   animate?: boolean;
-  onProgress?: (revealedLength: number) => void;
+  onProgress?: (messageId: string, revealedLength: number) => void;
 }
 
 export function MessageList({ messages, animate = true, onProgress }: Props) {

@@ -18,13 +18,14 @@ from ..security import (
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _set_session_cookie(response: Response, token: str, secure: bool) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         max_age=SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=secure,
         path="/",
     )
 
@@ -41,7 +42,7 @@ def login(
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "密码错误"}
         )
-    _set_session_cookie(response, create_session_token(settings.secret_key))
+    _set_session_cookie(response, create_session_token(settings.secret_key), settings.cookie_secure)
     return {"ok": True}
 
 

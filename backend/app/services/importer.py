@@ -81,7 +81,11 @@ def import_book(
         session.commit()
     except Exception:
         session.rollback()
-        backup_path.unlink(missing_ok=True)
+        # 清理备份，但不能掩盖原始异常
+        try:
+            backup_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise
 
     notice = None

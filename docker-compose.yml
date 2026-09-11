@@ -7,10 +7,17 @@ services:
     ports:
       - "${BIND_HOST:-127.0.0.1}:${PORT:-8000}:8000"
     environment:
-      ACCESS_PASSWORD: ${ACCESS_PASSWORD:-changeme}
-      SECRET_KEY: ${SECRET_KEY:-please-change-me}
+      # 未设置时会直接报错并提示（避免用默认密码/密钥上线）
+      ACCESS_PASSWORD: ${ACCESS_PASSWORD:?请先 cp .env.example .env 并设置 ACCESS_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:?请先 cp .env.example .env 并设置 SECRET_KEY}
       TYPING_SPEED: ${TYPING_SPEED:-1.0}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
-      - ./data:/data
-      - ./novels:/novels
+      # 命名卷：Docker 会用镜像内 /data、/novels 的属主(moyu)初始化，非 root 容器可直接写入
+      - moyu-data:/data
+      - moyu-novels:/novels
     restart: unless-stopped
+
+volumes:
+  moyu-data:
+  moyu-novels:

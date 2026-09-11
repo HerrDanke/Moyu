@@ -38,9 +38,17 @@ class ChatResponse:
     body: str
     title: str | None = None
     footer: str | None = None
+    # —— 进度写入 ——
     progress_book_id: int | None = None
     progress_chapter_index: int | None = None
     progress_offset: int | None = None
+    progress_prev_index: int | None = None
+    # 章节推进用条件更新（CAS）；续读/跟读不做 CAS
+    progress_conditional: bool = False
+    # —— 章节元信息（前端据此计算续读字符偏移）——
+    meta_chapter_index: int | None = None
+    meta_start_offset: int = 0
+    meta_char_count: int = 0
 
 
 def parse_intent(message: str, max_chars: int = 500) -> Intent:
@@ -86,7 +94,12 @@ def _text_response(body: str) -> ChatResponse:
 
 
 def _chapter_response(
-    book: Book, chapter: Chapter, *, start_offset: int, resume: bool
+    book: Book,
+    chapter: Chapter,
+    *,
+    start_offset: int,
+    resume: bool,
+    prev_index: int | None = None,
 ) -> ChatResponse:
     # 断点超出正文范围时回到章节开头，避免续读为空
     if start_offset <= 0 or start_offset >= len(chapter.content):
@@ -103,6 +116,11 @@ def _chapter_response(
         progress_book_id=book.id,
         progress_chapter_index=chapter.index_no,
         progress_offset=start_offset if resume else 0,
+        progress_prev_index=prev_index,
+        progress_conditional=not resume,
+        meta_chapter_index=chapter.index_no,
+        meta_start_offset=start_offset,
+        meta_char_count=len(chapter.content),
     )
 
 
@@ -143,7 +161,9 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
 
     if intent.kind == "switch_book":
         keyword = (intent.keyword or "").strip()
-        book = session.scalar(select(Book).where(Book.title.like(f"%{keyword}%")))
+        book = session.scalar(
+            select(Book).where(Book.title.like(f"%{escape_like(keyword)}%", escape="\\"))
+        )
         if book is None:
             return _text_response(f"没找到叫「{keyword}」的书，回复『书单』看看有哪些吧。")
         store.set_current_book(session, book.id)
@@ -164,7 +184,10 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
             return _no_book_response(session)
         hits = session.scalars(
             select(Chapter)
-            .where(Chapter.book_id == book.id, Chapter.title.like(f"%{keyword}%"))
+            .where(
+                Chapter.book_id == book.id,
+                Chapter.title.like(f"%{escape_like(keyword)}%", escape="\\"),
+            )
             .order_by(Chapter.index_no.asc())
             .limit(20)
         ).all()
@@ -182,6 +205,7 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
 
     prog = _progress(session, book.id)
     current = prog.chapter_index if prog else 0
+    prev_index = prog.chapter_index if prog else None
     max_index = session.scalar(
         select(func.max(Chapter.index_no)).where(Chapter.book_id == book.id)
     ) or 0
@@ -203,4 +227,9 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
     chapter = _get_chapter(session, book.id, target)
     if chapter is None:
         return _text_response(f"没找到第 {target} 章。")
-    return _chapter_response(book, chapter, start_offset=0, resume=False)
+    return _chapter_response(book, chapter, start_offset=0, resume=False, prev_index=prev_index)
+
+
+def escape_like(text: str) -> str:
+    """转义 LIKE 通配符，避免用户输入 % / _ 变成通配。"""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

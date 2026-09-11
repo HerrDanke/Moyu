@@ -12,7 +12,10 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 天
 def verify_password(settings_password: str, candidate: str) -> bool:
     if not settings_password:
         return False
-    return hmac.compare_digest(settings_password, candidate)
+    # 比较 UTF-8 字节：str 直接比较非 ASCII 会抛 TypeError
+    return hmac.compare_digest(
+        settings_password.encode("utf-8"), candidate.encode("utf-8")
+    )
 
 
 def _serializer(secret_key: str) -> URLSafeTimedSerializer:

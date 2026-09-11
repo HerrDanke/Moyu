@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
@@ -46,10 +45,3 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
-
-
-def db_file_size(path: Path) -> int:
-    try:
-        return path.stat().st_size
-    except OSError:
-        return 0

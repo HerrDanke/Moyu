@@ -65,3 +65,43 @@ def test_search_injection_safe(client):
     resp = client.get("/api/search", params={"q": "%' OR 1=1 --"})
     assert resp.status_code == 200
     assert resp.json()["hits"] == []
+
+
+def test_search_wildcard_is_escaped(client):
+    import_sample(client)
+    # 单独的 % 不应作为通配符命中所有章节
+    resp = client.get("/api/search", params={"q": "%"})
+    assert resp.status_code == 200
+    assert resp.json()["hits"] == []
+
+
+def test_select_book_sets_current(client, app):
+    from app.services import store
+
+    book_id = import_sample(client)["book_id"]
+    resp = client.post(f"/api/books/{book_id}/select")
+    assert resp.status_code == 200
+    session = app.state.session_factory()
+    current = store.get_current_book(session)
+    session.close()
+    assert current is not None and current.id == book_id
+
+
+def test_unknown_api_path_is_404_not_html(tmp_path):
+    # 必须挂载静态目录才能真正验证 SPA fallback 不会吞掉未注册的 /api/*
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    from .conftest import make_settings
+
+    static = tmp_path / "static"
+    static.mkdir()
+    (static / "index.html").write_text('<!doctype html><div id="root"></div>', "utf-8")
+    app = create_app(make_settings(tmp_path, static_dir=static))
+    client = TestClient(app)
+
+    assert client.get("/api/does-not-exist").status_code == 404
+    # 普通深层路由仍回退到 index.html
+    resp = client.get("/some/deep/route")
+    assert resp.status_code == 200 and 'id="root"' in resp.text

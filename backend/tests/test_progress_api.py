@@ -22,16 +22,42 @@ def test_patch_progress(client):
     assert resp["chapter_offset"] == 10
 
 
+def test_out_of_range_chapter_rejected(client):
+    book_id = import_sample(client)["book_id"]
+    resp = client.patch(f"/api/progress/{book_id}", json={"chapter_index": 9999})
+    assert resp.status_code == 400
+
+
+def test_offset_only_update_keeps_chapter(client):
+    book_id = import_sample(client)["book_id"]
+    client.patch(f"/api/progress/{book_id}", json={"chapter_index": 2})
+    resp = client.patch(f"/api/progress/{book_id}", json={"chapter_offset": 42}).json()
+    assert resp["chapter_index"] == 2
+    assert resp["chapter_offset"] == 42
+
+
+def test_write_progress_atomic_cas(client, app):
+    from app.models import Progress
+
+    book_id = import_sample(client)["book_id"]
+    session = app.state.session_factory()
+    store.write_progress(session, book_id, 1, 0)
+    # 旧值匹配 → 推进成功
+    assert store.write_progress(session, book_id, 2, 0, conditional_from=1) is True
+    # 旧值不匹配 → 原子 CAS 失败，不改动
+    assert store.write_progress(session, book_id, 3, 0, conditional_from=1) is False
+    assert session.get(Progress, book_id).chapter_index == 2
+    session.close()
+
+
 def test_write_progress_optimistic_lock(client, app):
     book_id = import_sample(client)["book_id"]
     session = app.state.session_factory()
     store.write_progress(session, book_id, 2, 0)
-    # 条件不匹配则跳过
     ok = store.write_progress(session, book_id, 3, 0, conditional_from=1)
     assert ok is False
     progress = session.get(Progress, book_id)
     assert progress.chapter_index == 2
-    # 条件匹配则写入
     ok2 = store.write_progress(session, book_id, 3, 0, conditional_from=2)
     assert ok2 is True
     session.close()

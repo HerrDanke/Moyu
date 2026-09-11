@@ -15,6 +15,7 @@ class Settings:
     typing_speed: float = 1.0
     access_password: str = ""
     secret_key: str = "dev-secret-change-me"
+    cookie_secure: bool = False  # 走 HTTPS 时设为 True
     max_upload_bytes: int = 100 * 1024 * 1024  # 100MB
     max_chapter_chars: int = 100_000  # 单章上限，超出再拆
     fallback_chapter_chars: int = 3000  # 无章节分隔时按字数兜底
@@ -45,6 +46,7 @@ class Settings:
             typing_speed=float(os.environ.get("TYPING_SPEED", "1.0")),
             access_password=os.environ.get("ACCESS_PASSWORD", ""),
             secret_key=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
+            cookie_secure=os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
             max_upload_bytes=int(
                 os.environ.get("MAX_UPLOAD_BYTES", str(100 * 1024 * 1024))
             ),

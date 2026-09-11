@@ -4,8 +4,6 @@
 """
 from __future__ import annotations
 
-from dataclasses import replace
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -30,23 +28,28 @@ async def chat(
     settings: Settings = Depends(get_app_settings),
 ):
     response = build_response(session, settings, payload.message)
-    # 快速阅读：不做逐句节流，正文尽快分批送达
-    eff_settings = replace(settings, typing_speed=1000.0) if payload.quick_read else settings
-    progress = (
-        response.progress_book_id,
-        response.progress_chapter_index,
-        response.progress_offset or 0,
+    book_id = response.progress_book_id
+    chapter_index = response.progress_chapter_index
+    offset = response.progress_offset or 0
+    conditional_from = (
+        response.progress_prev_index if response.progress_conditional else None
     )
     session_factory = request.app.state.session_factory
 
     async def event_generator():
-        async for chunk in stream_response(response, eff_settings):
+        async for chunk in stream_response(response, settings, quick_read=payload.quick_read):
             yield chunk
-        # 流式正常结束后才推进进度
-        if progress[0] is not None:
+        # 流式正常结束后才推进进度（条件更新防多标签页重复推进）
+        if book_id is not None:
             fresh = session_factory()
             try:
-                store.write_progress(fresh, progress[0], progress[1] or 1, progress[2])
+                store.write_progress(
+                    fresh,
+                    book_id,
+                    chapter_index or 1,
+                    offset,
+                    conditional_from=conditional_from,
+                )
             finally:
                 fresh.close()
 

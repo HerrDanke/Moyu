@@ -15,6 +15,7 @@ from ..config import Settings
 from .chat_engine import ChatResponse
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?…；;\n])")
+QUICK_READ_HEAD_BATCHES = 3
 
 
 def split_sentences(text: str) -> list[str]:
@@ -31,29 +32,58 @@ def _batches(items: list[str], size: int) -> list[str]:
     return ["".join(items[i : i + size]) for i in range(0, len(items), size)]
 
 
+async def _paced_delay(settings: Settings) -> None:
+    # typing_speed <= 0 表示不节流（测试 / 快速模式）
+    if settings.typing_speed <= 0:
+        return
+    lo = settings.stream_min_delay
+    hi = max(settings.stream_max_delay, lo)
+    await asyncio.sleep(random.uniform(lo, hi) / settings.typing_speed)
+
+
 async def stream_response(
-    response: ChatResponse, settings: Settings
+    response: ChatResponse, settings: Settings, quick_read: bool = False
 ) -> AsyncIterator[str]:
     yield _sse({"type": "start"})
 
+    if response.progress_book_id is not None:
+        # 让前端把「当前书」同步为服务端认定的书
+        yield _sse({"type": "book", "id": response.progress_book_id})
+
+    if response.kind == "chapter" and response.meta_chapter_index is not None:
+        yield _sse(
+            {
+                "type": "meta",
+                "chapter_index": response.meta_chapter_index,
+                "start_offset": response.meta_start_offset,
+                "char_count": response.meta_char_count,
+            }
+        )
+
     if response.thinking:
         yield _sse({"type": "thinking", "text": response.thinking})
-        await asyncio.sleep(max(0.0, settings.thinking_delay / max(settings.typing_speed, 0.1)))
+        if settings.typing_speed > 0:
+            await asyncio.sleep(settings.thinking_delay / settings.typing_speed)
 
     if response.title:
         yield _sse({"type": "title", "text": response.title})
 
-    # 快速阅读：一次性给全文（仍按 SSE 事件发送，但无逐句节流）
-    if response.kind == "chapter" and settings.typing_speed <= 0:
-        yield _sse({"type": "chunk", "text": response.body})
-    else:
-        for batch in _batches(split_sentences(response.body), settings.chunk_sentences):
+    batches = _batches(split_sentences(response.body), settings.chunk_sentences)
+
+    if quick_read:
+        # 快速阅读：只演开头三段，其余一次性送达
+        for batch in batches[:QUICK_READ_HEAD_BATCHES]:
             yield _sse({"type": "chunk", "text": batch})
             if response.kind == "chapter":
-                lo = settings.stream_min_delay
-                hi = max(settings.stream_max_delay, lo)
-                delay = random.uniform(lo, hi) / max(settings.typing_speed, 0.1)
-                await asyncio.sleep(delay)
+                await _paced_delay(settings)
+        rest = "".join(batches[QUICK_READ_HEAD_BATCHES:])
+        if rest:
+            yield _sse({"type": "chunk", "text": rest})
+    else:
+        for batch in batches:
+            yield _sse({"type": "chunk", "text": batch})
+            if response.kind == "chapter":
+                await _paced_delay(settings)
 
     if response.footer:
         yield _sse({"type": "footer", "text": response.footer})

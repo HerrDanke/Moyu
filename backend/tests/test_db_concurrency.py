@@ -11,6 +11,19 @@ from app.services import store
 from .conftest import make_settings
 
 
+def test_wal_and_pragmas_are_applied(tmp_path):
+    settings = make_settings(tmp_path)
+    engine = create_engine_for(settings)
+    init_db(engine)
+    with engine.connect() as conn:
+        journal = conn.exec_driver_sql("PRAGMA journal_mode").scalar()
+        fk = conn.exec_driver_sql("PRAGMA foreign_keys").scalar()
+        busy = conn.exec_driver_sql("PRAGMA busy_timeout").scalar()
+    assert str(journal).lower() == "wal"
+    assert int(fk) == 1
+    assert int(busy) == 5000
+
+
 def test_concurrent_read_write_no_lock_error(tmp_path):
     settings = make_settings(tmp_path)
     engine = create_engine_for(settings)
