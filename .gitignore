@@ -1,0 +1,65 @@
+# ---- 运行时 / 依赖 ----
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+dist/
+build/
+
+# ---- 本地数据（SQLite 数据库、导入的原文备份）----
+/data/
+/novels/
+*.sqlite
+*.sqlite3
+*.db
+
+# ---- 环境与配置 ----
+.env
+*.local
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Superpowers / 生成的工具适配目录（框架产物，不入库）----
+.superpowers/
+.claude/
+.agent/
+.agents/
+.amazonq/
+.augment/
+.bob/
+.claudecode/
+.cline/
+.clinerules/
+.codeartsdoer/
+.codebuddy/
+.commandcode/
+.continue/
+.cospec/
+.crush/
+.cursor/
+.devin/
+.factory/
+.forge/
+.gemini/
+.github/
+.hermes/
+.iflow/
+.junie/
+.kilocode/
+.kimi-code/
+.kiro/
+.lingma/
+.omp/
+.opencode/
+.pi/
+.qoder/
+.qwen/
+.roo/
+.rovodev/
+.trae/
+.vibe/
+.zcode/
