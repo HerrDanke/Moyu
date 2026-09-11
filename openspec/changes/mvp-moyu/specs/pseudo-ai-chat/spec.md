@@ -54,10 +54,20 @@
 - Then 正文按句分批推送，间隔 600ms~1.4s
 - Then 收尾出现「第 N 章完 · 回复『下一章』继续阅读」
 
-#### Scenario: 支持跳过生成
-- Given 正在流式输出长章节
-- When 用户点击「跳过生成」
-- Then 立即展示该章全文，中断剩余流式过程
+#### Scenario: 流式期间零数据库访问
+- Given 流式推送进行中
+- Then 整章正文在推送开始前已读入内存，推送阶段不查库、不持有数据库连接
+
+#### Scenario: 快速阅读开关
+- Given 用户开启「快速阅读」
+- When 下达阅读指令
+- Then 流式只演开头三段，正文一次性渲染进 DOM
+- Given 用户开启流式时点击「跳过」
+- Then 前端用 AbortController 中断 fetch，服务端停止推送
+
+#### Scenario: 超长输入截断
+- Given 用户输入超过 500 字符的畸形文本
+- Then 输入被截断，指令解析正则保持线性、不触发灾难性回溯
 
 ### Requirement: 伪 AI 文案
 **ID:** pseudo-ai-chat.copywriting

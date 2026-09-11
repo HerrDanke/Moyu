@@ -30,3 +30,9 @@
 - When 调用 `GET /api/search?q=关键词&book_id=`
 - Then 返回标题命中的章节列表
 - Then 使用 SQLite `LIKE` 匹配，个人库量级满足使用
+
+#### Scenario: 关键词必须参数化绑定
+- Given 用户输入任意关键词（含 `%`、`_`、引号等）
+- When 执行搜索
+- Then 关键词仅以绑定参数传入（禁止 f-string 拼接 SQL），无注入面
+- Then 无命中时返回空列表而非报错
