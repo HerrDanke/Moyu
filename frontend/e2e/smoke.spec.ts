@@ -13,18 +13,16 @@ const NOVEL = `第一章 初入江湖
 晨光微露，他睁开眼，发现体内多了一缕灵气。
 `;
 
-test("导入小说并读下一章", async ({ page }) => {
-  // 记录对话 API 响应，断言确实发生了流式阅读
-  const chatBodies: string[] = [];
-  page.on("response", async (resp) => {
-    if (resp.url().includes("/api/chat")) {
-      chatBodies.push(await resp.text().catch(() => ""));
-    }
+test("登录 → 导入小说 → 读下一章", async ({ page }) => {
+  // 记录对话请求是否成功发起（流式响应体由断言页面内容来验证）
+  const chatStatuses: number[] = [];
+  page.on("response", (resp) => {
+    if (resp.url().includes("/api/chat")) chatStatuses.push(resp.status());
   });
 
   await page.goto("/");
 
-  // 若配置了访问密码，先登录（本地 E2E 建议不设密码）
+  // 若配置了访问密码，先登录
   const password = page.locator('input[type="password"]');
   if (await password.count()) {
     await password.fill(process.env.E2E_PASSWORD ?? "changeme");
@@ -43,7 +41,12 @@ test("导入小说并读下一章", async ({ page }) => {
   await input.fill("下一章");
   await input.press("Enter");
 
-  // 断言正文出现
+  // 正文出现
   await expect(page.getByText(/青石阶/)).toBeVisible({ timeout: 15_000 });
-  expect(chatBodies.join("")).toContain("[DONE]");
+  // 收尾文案出现 = 整段流式已完成
+  await expect(page.getByText(/第 1 章完/)).toBeVisible({ timeout: 15_000 });
+  // 输入框恢复可用
+  await expect(input).toBeEnabled({ timeout: 15_000 });
+
+  expect(chatStatuses).toContain(200);
 });
