@@ -24,7 +24,7 @@ Docker 单容器
 - `books(id, title, source_filename, total_chapters, created_at)`
 - `chapters(id, book_id, index_no, title, content, char_count)`，`(book_id, index_no)` 唯一
 - `progress(book_id PK, chapter_index, updated_at)`
-- `settings(key, value)` — 主题、打字速度、AI 文案模板
+- `settings(key, value)` — 打字速度、AI 文案模板、当前书（主题偏好存前端 localStorage，不落库）
 
 ## 对话引擎（指令解析，正则 + 中文关键词）
 | 意图 | 触发示例 | 行为 |
@@ -70,7 +70,7 @@ GET    /api/search?q=&book_id= 搜索
 - 连续指令 → 串行排队防重复
 
 ## 配置（环境变量）
-`PORT`、`DATA_DIR`、`NOVEL_DIR`、`TYPING_SPEED`、`THEME`
+`PORT`、`DATA_DIR`、`NOVEL_DIR`、`TYPING_SPEED`（主题偏好由前端 localStorage 管理）
 
 ## 前端组件
 `MessageList` / `ChatInput` / `BookSelector` / `ThemeToggle` + `useTypingEffect` hook
