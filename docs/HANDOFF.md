@@ -41,26 +41,30 @@
 14. **静态资源挂载必须晚于 `/api` 路由注册**；未注册的 `/api/*` 必须返回 404，不能回退成 `index.html`（`main.py: SPAStaticFiles`）。
 15. TXT 编码探测顺序固定为 BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。许多 GBK 双字节序列恰好是合法 UTF-8，**不要改成 charset-normalizer 优先**。
 16. **主题与阅读宽度必须留在 localStorage**：首屏防闪烁依赖 CSS 之前的内联脚本直接读 `localStorage`，改成等接口返回必然闪一下。这是有意取舍，不是遗漏。
+17. **指令正则全靠锚定互相区分，动它们之前先看 `test_chat_engine.py` 的边界用例**。最容易被误伤的一对是：裸露的「继续」「继续读」**必须**保持为 `next`（读下一章），而 `resume`（续读本章）只能由「继续本章」「续读本章」「接着读」这种带限定的说法触发。若把 `继续` 并进 `resume`，用户在旧习惯下说「继续」就会原地重读本章，而这是本仓库文档与测试都固化过的行为。
+18. **前端上报偏移必须带上章号**（`App.tsx: handleProgressReport` → `PATCH /api/progress` 要同时给 `chapter_index` 与 `chapter_offset`）。服务端只在本章流**正常结束**后才写新章号；若只发偏移，服务端会沿用库里的旧章号，于是中途点「停止」就留下「旧章号 + 新偏移」的不一致行——而「继续本章」会把这一行当事实源，把用户送到上一章的错位置甚至误报「已读完」。
+19. **续读不在服务端写进度**（`ChatResponse.progress_skip_write`）。续读不改章号，章内偏移由前端实时上报；服务端若在流结束后把「请求时刻读到的旧偏移」写回去，会**回滚**用户真正读到的位置——极速档下打字机可能先于流结束跑完，这条陈旧写入就成了最后一次写入，而服务端并不知道用户实际读到哪。注意这条只针对 `resume`；`next`/`prev`/`goto` 与切书续读**必须**继续写（它们要负责推进章号）。
 
 ## 快速验证
 
 改动后至少跑前两组；涉及流式/前端交互时加跑 E2E。
 
 ```bash
-# 后端（105 passed 为基线）
+# 后端（115 passed 为基线）
 cd backend && .venv/Scripts/python.exe -m pytest -q
 
 # 前端单元测试 + 生产构建（7 passed + 构建成功为基线）
 cd frontend && npm run test && npm run build
 
-# 真实浏览器端到端（30 passed 为基线；需先 npx playwright install chromium）
+# 真实浏览器端到端（31 passed 为基线；需先 npx playwright install chromium）
 cd frontend && E2E_BASE_URL=http://<host>:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> npx playwright test
 ```
 
 - **E2E 串行**（`playwright.config.ts: workers: 1`）：目标环境是单核容器，并行 worker 会把后端压到超时，产生与代码无关的偶发失败。
 - `e2e/_*.spec.ts` 是**一次性工具/诊断脚本**的约定前缀（截图、探针、图标生成），已被 `testIgnore` 排除，不参与回归。需要重跑时临时改名或去掉该 ignore。
 - E2E 需要一个**已初始化的实例**（库里有账号）。若服务尚未初始化，设置 `E2E_SETUP_CODE` 让它走首次引导。
-- 本套 30 条已在**真实部署实例**（`192.168.178.116`）上跑通，单核约 1.1 分钟。这是发布前的最终口径。
+- 本套 31 条已在**真实部署实例**（`192.168.178.116`）上跑通，单核约 1.1 分钟。这是发布前的最终口径。
+- **同一个实例跑多轮会越来越慢，最终出现与代码无关的失败。** 实测：连续跑三轮后库里累积到 **39 本书**，此时某个用例的 `login()` 虽返回 200，但 `sidebar` 在 15 秒内没渲染出来而超时失败。排查时先看服务端日志确认状态码（**没有 429、没有 5xx**），再数一下书库规模——不是回归。**结论：每轮 E2E 换一个干净实例**，或按下一节清理。
 
 ### 别直接对线上实例跑全量 E2E
 

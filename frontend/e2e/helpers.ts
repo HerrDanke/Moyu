@@ -97,12 +97,25 @@ export async function importPacedNovel(page: Page, tag = "paced") {
   await expect(page.getByText(/共 3 章/)).toBeVisible({ timeout: 15_000 });
 }
 
+/**
+ * 在输入框里发一条指令。
+ *
+ * 这里**必须先断言受控值稳定再回车**，不能 fill 完直接 press("Enter")：
+ * 输入框是 React 受控组件，紧跟其后的那次 keydown 有可能仍由 `draft` 还是空串的
+ * 那一帧处理（单核目标机上更容易发生），于是 `submit()` 因 text 为空而早退——
+ * 表现为「草稿已清空 / 发送按钮禁用，但界面没有新消息」这种与代码无关的偶发失败。
+ */
+export async function sendCommand(page: Page, command: string) {
+  const input = page.locator('[data-testid="composer-input"]');
+  await input.fill(command);
+  await expect(input).toHaveValue(command);
+  await input.press("Enter");
+}
+
 /** 发一条指令并返回「从发送到收尾文案出现」的毫秒数。 */
 export async function measureStreamMs(page: Page, command: string) {
   const t0 = Date.now();
-  const input = page.locator('[data-testid="composer-input"]');
-  await input.fill(command);
-  await input.press("Enter");
+  await sendCommand(page, command);
   await expect(page.locator('[data-testid="stop-button"]')).toBeHidden({ timeout: 120_000 });
   return Date.now() - t0;
 }

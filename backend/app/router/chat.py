@@ -50,7 +50,9 @@ async def chat(
         # 流式正常结束后才推进进度。
         # 注意：这里不能静默吞异常——进度写失败会导致「界面在第 9 章、进度还在第 2 章」，
         # 下一次「下一章」就会跳错章。至少要留下日志。
-        if book_id is not None:
+        # 例外：「继续本章」不改章号，偏移由前端实时上报，服务端**不写**——
+        # 否则会把请求时刻读到的旧偏移写回去，回滚用户真正读到的位置。
+        if book_id is not None and not response.progress_skip_write:
             fresh = session_factory()
             try:
                 store.write_progress(

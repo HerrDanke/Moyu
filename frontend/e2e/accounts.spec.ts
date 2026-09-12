@@ -5,6 +5,7 @@ import {
   createUserViaUi,
   importNovel,
   login,
+  sendCommand,
 } from "./helpers";
 
 test.describe("账号与用户管理", () => {
@@ -84,9 +85,7 @@ test.describe("账号与用户管理", () => {
 
     // 管理员导入一本书并读一章
     await importNovel(page, "iso");
-    const input = page.locator('[data-testid="composer-input"]');
-    await input.fill("下一章");
-    await input.press("Enter");
+    await sendCommand(page, "下一章");
     await expect(page.getByText(/第 1 章完/)).toBeVisible({ timeout: 30_000 });
     await expect
       .poll(async () => (await page.locator('[data-testid="sidebar-progress"]').textContent()) ?? "", {

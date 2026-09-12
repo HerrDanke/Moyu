@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { importNovel, login, openSettings } from "./helpers";
+import { importNovel, login, openSettings, sendCommand } from "./helpers";
 
 test.describe("ChatGPT 式外壳", () => {
   test("空状态：显示书名与进度，点示例指令即开始阅读", async ({ page }) => {
@@ -41,9 +41,7 @@ test.describe("ChatGPT 式外壳", () => {
     await importNovel(page, "bookB");
 
     // 发一条消息，让当前书有会话内容
-    const input = page.locator('[data-testid="composer-input"]');
-    await input.fill("下一章");
-    await input.press("Enter");
+    await sendCommand(page, "下一章");
     await expect(page.locator('[data-testid="message-user"]')).toBeVisible({ timeout: 10_000 });
 
     // 找到非当前书的一本，点它
@@ -103,9 +101,7 @@ test.describe("ChatGPT 式外壳", () => {
     await login(page);
     await importNovel(page, "bubble");
 
-    const input = page.locator('[data-testid="composer-input"]');
-    await input.fill("下一章");
-    await input.press("Enter");
+    await sendCommand(page, "下一章");
 
     await expect(page.locator('[data-testid="message-user"]')).toBeVisible({ timeout: 10_000 });
     // 用户消息有背景色

@@ -1,23 +1,30 @@
 import { expect, test, type Page } from "@playwright/test";
-import { importGeneratedNovel, importNovel, login } from "./helpers";
+import {
+  importGeneratedNovel,
+  importNovel,
+  importPacedNovel,
+  login,
+  sendCommand,
+} from "./helpers";
 
 async function sendVia(page: Page, testId: string) {
   await page.locator(`[data-testid="${testId}"]`).click();
 }
 
 test.describe("阅读快捷工具条与章节目录", () => {
-  test("工具条只有翻页与目录，不含已移除的「跳转章节」", async ({ page }) => {
+  test("工具条四个按钮齐备，且不含已移除的「跳转章节」", async ({ page }) => {
     test.setTimeout(60_000);
     await login(page);
     await importNovel(page, "toolbar");
 
     const bar = page.locator('[data-testid="reading-toolbar"]');
     await expect(bar).toBeVisible();
-    for (const id of ["toolbar-prev", "toolbar-next", "toolbar-toc"]) {
+    for (const id of ["toolbar-prev", "toolbar-next", "toolbar-resume", "toolbar-toc"]) {
       await expect(page.locator(`[data-testid="${id}"]`)).toBeVisible();
     }
-    // 回归护栏：「跳转章节」与「目录」功能重复，已被移除。若被重新加回，这里会失败。
-    await expect(bar.locator("button")).toHaveCount(3);
+    // 护栏一：工具条就是这 4 个按钮，多一个少一个都失败
+    await expect(bar.locator("button")).toHaveCount(4);
+    // 护栏二：「跳转章节」与「目录」功能重复，已被移除。若被重新加回，这里会失败。
     await expect(page.locator('[data-testid="toolbar-jump"]')).toHaveCount(0);
   });
 
@@ -39,10 +46,54 @@ test.describe("阅读快捷工具条与章节目录", () => {
     await sendVia(page, "toolbar-next");
     await expect(page.locator('[data-testid="toolbar-next"]')).toBeDisabled();
     await expect(page.locator('[data-testid="toolbar-prev"]')).toBeDisabled();
+    // 「继续本章」也是发送类按钮，生成中同样禁用
+    await expect(page.locator('[data-testid="toolbar-resume"]')).toBeDisabled();
     await expect(page.locator('[data-testid="toolbar-toc"]')).toBeEnabled();
 
     await expect(page.getByText(/第 1 章完/)).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="toolbar-next"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="toolbar-resume"]')).toBeEnabled();
+  });
+
+  /**
+   * 端到端：点「继续本章」必须从断点续读，而不是重放本章或跳到下一章。
+   *
+   * 断点用 API 直接写入，而不是「让打字机跑到一半再按停止」：单核目标机上后者依赖时序，
+   * 会产生与代码无关的偶发失败（而且偏移上报有 1 秒节流，可能一次都没写）。真实阅读时
+   * 「打字机把偏移写进进度」这条路径已由后端用例覆盖。
+   */
+  test("点「继续本章」从断点续读本章剩余部分", async ({ page }) => {
+    test.setTimeout(90_000);
+    await login(page);
+    await importPacedNovel(page, "resume");
+
+    // E2E 全程共用一个实例，前面的用例已经导入过书，所以刚导入的这本不一定是 id=1。
+    // 取 id 最大的那本——导入后应用会自动选中它（前端也用它做「当前书」）。
+    const books = await (await page.request.get("/api/books")).json();
+    const bookId = books[books.length - 1].id as number;
+
+    // 按第 1 章正文长度的 1/4 处下断点（动态取值，不依赖具体排版）
+    const chapters = await (
+      await page.request.get(`/api/books/${bookId}/chapters`)
+    ).json();
+    const first = chapters.find((c: { index_no: number }) => c.index_no === 1);
+    const cut = Math.floor(first.char_count / 4);
+    expect(cut).toBeGreaterThan(0);
+
+    const resp = await page.request.patch(`/api/progress/${bookId}`, {
+      data: { chapter_index: 1, chapter_offset: cut },
+    });
+    expect(resp.status()).toBe(200);
+    expect((await resp.json()).chapter_offset).toBe(cut);
+
+    await sendVia(page, "toolbar-resume");
+    await expect(page.locator('[data-testid="message-user"]')).toContainText("继续本章");
+
+    const assistant = page.locator('[data-testid="message-assistant"]').last();
+    // 剩余部分确实送到了（末句在）
+    await expect(assistant).toContainText("这是第 8 句正文", { timeout: 30_000 });
+    // 已读的开头没有被重放 —— 这一条同时证明断点读的是「当前书」的进度行
+    await expect(assistant).not.toContainText("这是第 1 句正文");
   });
 
   test("手输「第 N 章」仍能跳章（去掉按钮后跳章能力不受影响）", async ({ page }) => {
@@ -50,9 +101,7 @@ test.describe("阅读快捷工具条与章节目录", () => {
     await login(page);
     await importNovel(page, "tooljump");
 
-    const input = page.locator('[data-testid="composer-input"]');
-    await input.fill("第 2 章");
-    await input.press("Enter");
+    await sendCommand(page, "第 2 章");
     await expect(page.locator('[data-testid="message-user"]')).toContainText("第 2 章");
     await expect(page.getByText(/第 2 章完/)).toBeVisible({ timeout: 30_000 });
   });
@@ -118,9 +167,7 @@ test.describe("阅读快捷工具条与章节目录", () => {
     await importGeneratedNovel(page, 40, "toc");
 
     // 先读到第 3 章，验证打开目录时高亮当前章
-    const input = page.locator('[data-testid="composer-input"]');
-    await input.fill("第 3 章");
-    await input.press("Enter");
+    await sendCommand(page, "第 3 章");
     await expect(page.getByText(/第 3 章完/)).toBeVisible({ timeout: 30_000 });
 
     await sendVia(page, "toolbar-toc");

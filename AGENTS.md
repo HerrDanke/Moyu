@@ -23,7 +23,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload               # http://127.0.0.1:8000
 
-.venv/Scripts/python.exe -m pytest -q                       # 全量（基线 105 passed）
+.venv/Scripts/python.exe -m pytest -q                       # 全量（基线 115 passed）
 .venv/Scripts/python.exe -m pytest tests/test_progress_advance.py -q   # 单个文件
 .venv/Scripts/python.exe -m pytest -q -k write_progress     # 按名称筛选
 ```
@@ -44,6 +44,10 @@ npm run build                               # tsc -b && vite build —— 这也
 `npm run build` 里的 `tsc -b` 是前端唯一静态检查（tsconfig 开了 `strict` / `noUnusedLocals` /
 `noUnusedParameters`）。改完 TS 至少跑一次 `npm run build`。
 
+**但 `tsconfig.json` 的 `include` 只有 `["src"]` —— `e2e/` 不参与类型检查。** 也就是说
+`npm run build` 拦不住 e2e 里的语法/引用错误（比如删掉一个局部变量却留下引用），
+这类错误只会在 Playwright **运行时**才炸。所以改完 e2e 必须真的跑一遍，不能只靠构建。
+
 ### 端到端（Playwright）
 
 ```bash
@@ -57,6 +61,9 @@ npx playwright test e2e/chapter-nav.spec.ts # 单个 spec
 - **别直接对线上实例跑全量 E2E**：它会导入测试书、建测试账号、改当前用户的设置与当前书。
   污染范围与「快照 → 跑 → 还原」步骤见 [docs/HANDOFF.md](docs/HANDOFF.md) 的「别直接对线上实例跑全量 E2E」。
 - E2E 需要**已初始化**的实例；未初始化时用 `E2E_SETUP_CODE` 走首次引导。
+- **别对同一个实例反复跑多轮**：测试数据会累积（实测连跑三轮后库里到 39 本书），首屏加载随之变慢，
+  会出现 `login()` 明明返回 200、`sidebar` 却在 15 秒内没渲染出来的**假失败**。
+  排查这类失败先看服务端日志的状态码（无 429、无 5xx 就不是回归），再数书库规模。每轮换干净实例。
 
 ### Docker / 部署
 
@@ -131,7 +138,7 @@ readers/       base.BaseReader + txt_reader（编码探测、章节切分）
 
 ## 必须遵守的高风险约束
 
-以下几条是踩过坑、且有测试兜底的。完整 16 条见 [docs/HANDOFF.md](docs/HANDOFF.md) 的「不可破坏的约定」，
+以下几条是踩过坑、且有测试兜底的。完整 19 条见 [docs/HANDOFF.md](docs/HANDOFF.md) 的「不可破坏的约定」，
 改动相关模块前请先读一遍。
 
 1. **SSE 推送期间零数据库访问**：`typing_stream.py` 不得查库；查库只发生在 `chat_engine.build_response`。
@@ -149,6 +156,13 @@ readers/       base.BaseReader + txt_reader（编码探测、章节切分）
 8. **续读偏移只按章节正文计**，且只允许当前活跃消息上报（旧章节滞留的打字机会污染新章节偏移）。
 9. **TXT 编码探测顺序固定**：BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。
    很多 GBK 双字节序列恰好是合法 UTF-8，**不要**改成 charset-normalizer 优先。
+10. **指令正则靠锚定互相区分**：裸露的「继续」「继续读」必须保持为 `next`（读下一章），
+    只有「继续本章」这类带限定的说法才触发续读（`resume`）。动这些正则前先跑 `test_chat_engine.py`。
+11. **偏移上报必须带上章号**：`App.tsx: handleProgressReport` 要把 `chapter_index` 与 `chapter_offset`
+    一起 PATCH。只发偏移时服务端会沿用库里旧章号（它只在本章流正常结束后才写新章号），
+    中途「停止」就会留下「旧章号 + 新偏移」的不一致行，下一次「继续本章」会把它当事实源而跳错位置。
+12. **续读不在服务端写进度**（`ChatResponse.progress_skip_write`）：续读不改章号，偏移由前端实时上报；
+    服务端若写回请求时刻的旧偏移，会回滚用户真正读到的位置。
 
 ## 测试约定（`backend/tests/`）
 

@@ -417,7 +417,14 @@ export default function App() {
     if (now - lastPatchRef.current < 1000) return;
     lastPatchRef.current = now;
     const offset = msg.startOffset + revealedBody;
-    void patchProgress(bookId, { chapter_offset: offset })
+    // 章号必须跟偏移一起上报。只发偏移的话，服务端会沿用库里的旧章号
+    // （它只在本章流**正常结束**后才写新章号），于是中途「停止」会留下
+    // 「旧章号 + 新偏移」的不一致行——而下一次「继续本章」正好把这行当事实源，
+    // 会把用户送到上一章的错位置，甚至误报「本章已读完」。
+    void patchProgress(bookId, {
+      chapter_offset: offset,
+      ...(msg.chapterIndex !== undefined ? { chapter_index: msg.chapterIndex } : {}),
+    })
       .then((updated) => {
         setProgressMap((prev) => ({ ...prev, [updated.book_id]: updated }));
       })

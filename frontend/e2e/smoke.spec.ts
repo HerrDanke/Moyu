@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { importNovel, login, readingPercent } from "./helpers";
+import { importNovel, login, readingPercent, sendCommand } from "./helpers";
 
 test("登录 → 导入小说 → 读下一章", async ({ page }) => {
   test.setTimeout(60_000);
@@ -11,14 +11,12 @@ test("登录 → 导入小说 → 读下一章", async ({ page }) => {
   await login(page);
   await importNovel(page, "smoke");
 
-  const input = page.locator('[data-testid="composer-input"]');
-  await input.fill("下一章");
-  await input.press("Enter");
+  await sendCommand(page, "下一章");
 
   await expect(page.locator('[data-testid="message-user"]')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/青石阶/)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/第 1 章完/)).toBeVisible({ timeout: 20_000 });
-  await expect(input).toBeEnabled({ timeout: 15_000 });
+  await expect(page.locator('[data-testid="composer-input"]')).toBeEnabled({ timeout: 15_000 });
 
   expect(chatStatuses).toContain(200);
 });
@@ -45,9 +43,7 @@ test("非安全上下文（明文 HTTP）下也能正常发送", async ({ page }
   await login(page);
   await importNovel(page, "nosecure");
 
-  const input = page.locator('[data-testid="composer-input"]');
-  await input.fill("下一章");
-  await input.press("Enter");
+  await sendCommand(page, "下一章");
 
   await expect(page.locator('[data-testid="message-user"]')).toBeVisible({ timeout: 10_000 });
   expect(chatRequests.length).toBeGreaterThan(0);
@@ -66,9 +62,7 @@ test("阅读时百分比自行推进（无需刷新页面）", async ({ page }) 
   await login(page);
   await importNovel(page, "progress");
 
-  const input = page.locator('[data-testid="composer-input"]');
-  await input.fill("下一章");
-  await input.press("Enter");
+  await sendCommand(page, "下一章");
 
   await expect
     .poll(() => readingPercent(page), {
