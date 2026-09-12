@@ -275,7 +275,15 @@ export default function App() {
     if (now - lastPatchRef.current < 1000) return;
     lastPatchRef.current = now;
     const offset = msg.startOffset + revealedBody;
-    void patchProgress(bookId, { chapter_offset: offset }).catch(() => {});
+    // 关键：把服务端返回的进度回写本地 state，否则顶部百分比会冻结在旧值，
+    // 只有刷新页面才会更新（进度其实早已落库）。
+    void patchProgress(bookId, { chapter_offset: offset })
+      .then((updated) => {
+        setProgress((prev) =>
+          prev && prev.book_id === updated.book_id ? updated : prev,
+        );
+      })
+      .catch(() => {});
   }, []);
 
   const currentBook = useMemo(

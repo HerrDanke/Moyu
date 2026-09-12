@@ -15,8 +15,23 @@ function AssistantBubble({ message, animate, onProgress }: BubbleProps) {
   const showThinking = message.streaming && !shown && !!message.thinking;
 
   useEffect(() => {
-    if (typing && onProgress) onProgress(message.id, shown.length);
-  }, [shown.length, typing, message.id, onProgress]);
+    if (!onProgress) return;
+    if (animate) {
+      // 打字机模式：按已吐出的字符数上报
+      if (typing) onProgress(message.id, shown.length);
+    } else if (!message.streaming && message.text) {
+      // 快速阅读：无打字机动画，流式结束即视为本章已读完
+      onProgress(message.id, message.text.length);
+    }
+  }, [
+    shown.length,
+    typing,
+    animate,
+    message.id,
+    message.streaming,
+    message.text,
+    onProgress,
+  ]);
 
   return (
     <div className="msg assistant">
