@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <style>
+    /* 标签栏跟随浏览器主题：浅色用近黑，深色用浅灰，避免"看不见" */
+    path { stroke: #0d0d0d; }
+    @media (prefers-color-scheme: dark) {
+      path { stroke: #ececec; }
+    }
+  </style>
+  <path
+    d="M12 3c4 3.9 6.4 7 6.4 9.9a6.4 6.4 0 0 1-12.8 0C5.6 10 8 6.9 12 3Z"
+    stroke-width="1.9"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M9.3 13.5c1.2 1.5 4.2 1.5 5.4 0"
+    stroke-width="1.9"
+    stroke-linecap="round"
+  />
+</svg>

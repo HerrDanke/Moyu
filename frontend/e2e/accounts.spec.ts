@@ -23,6 +23,27 @@ test.describe("账号与用户管理", () => {
     expect(body).not.toContain("openai");
   });
 
+  test("标签页图标用的是站点 logo", async ({ page }) => {
+    test.setTimeout(60_000);
+    await login(page);
+
+    const iconHref = await page.getAttribute('link[rel="icon"]', "href");
+    expect(iconHref).toBe("/favicon.svg");
+
+    // 图标文件必须真的能取到，且是 SVG
+    const resp = await page.request.get("/favicon.svg");
+    expect(resp.status()).toBe(200);
+    expect(resp.headers()["content-type"]).toContain("svg");
+    const svg = await resp.text();
+    expect(svg).toContain("<svg");
+    // 用的是自有墨滴标记，而不是任何第三方图形
+    expect(svg).toContain("M12 3c4 3.9 6.4 7 6.4 9.9");
+
+    // 兼容性回退也在
+    expect(await page.request.get("/favicon-32x32.png")).status?.(200);
+    expect(await page.request.get("/apple-touch-icon.png")).status?.(200);
+  });
+
   test("侧栏显示当前用户与身份", async ({ page }) => {
     test.setTimeout(60_000);
     await login(page);
