@@ -1,3 +1,10 @@
+/**
+ * 一次性工具：从 public/favicon.svg 重新生成 PNG 图标。
+ *
+ * 不参与正式回归（`_` 前缀已被 playwright.config.ts 的 testIgnore 排除）。
+ * 需要重跑时把本文件临时改名为 favicon-gen.spec.ts，或去掉 config 里的 testIgnore，
+ * 然后：npx playwright test _genfavicon.spec.ts --workers=1
+ */
 import { test } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
