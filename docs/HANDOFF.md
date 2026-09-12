@@ -5,21 +5,21 @@
 
 ## 一句话现状
 
-MVP 已完成、已通过多层测试、已推送到公开仓库：一个可自托管的「伪装成 AI 聊天」的本地 TXT 小说阅读器。当前无进行中的 OpenSpec 变更（都已归档）。
+一个可自托管的「伪装成 AI 聊天」的本地 TXT 小说阅读器，功能已完整（账号体系 / ChatGPT 式界面 / 章节目录 / 设置面板）、已多层测试、已推送到公开仓库并在真实 PVE 容器上运行。当前无进行中的 OpenSpec 变更（都已归档）。
 
 ## 产物索引（建议阅读顺序）
 
 | 想了解 | 去哪里看 |
 |---|---|
-| 项目是什么、如何部署、指令表 | `README.md` |
-| 为什么做这件事、非目标 | `openspec/changes/archive/2026-09-11-mvp-moyu/proposal.md` |
-| 技术方案与关键设计决策 | 同目录 `design.md` |
-| **系统当前事实源**（已归档规格） | `openspec/specs/{pseudo-ai-chat,novel-import,books,progress,auth}/spec.md` |
-| 实现清单与完成状态 | 同 archive 目录 `tasks.md` |
+| 项目是什么、怎么部署、指令表与思考强度 | `README.md` |
+| **系统当前事实源** | `openspec/specs/`（7 个能力：`pseudo-ai-chat` `novel-import` `books` `progress` `auth` `user-admin` `ui-shell`） |
+| 某个功能为什么这么做、当时的取舍 | `openspec/changes/archive/<日期>-<名称>/`（proposal → design → tasks） |
 | 后端结构 | `backend/app/`（`readers/` `router/` `services/`） |
 | 前端结构 | `frontend/src/`（`api/` `hooks/` `components/`） |
 | 变更历史 | `git log`（不要在本文件重复提交内容） |
 | 远程仓库 | https://github.com/HerrDanke/Moyu |
+
+已归档变更（按时间）：`mvp-moyu` / `chatgpt-ui` / `user-management` / `chapter-navigation` / `settings-panel`。
 
 ## 不可破坏的约定
 
@@ -27,52 +27,60 @@ MVP 已完成、已通过多层测试、已推送到公开仓库：一个可自�
 
 1. **SQLite 必须 WAL + `busy_timeout=5000` + `foreign_keys=ON`**（`backend/app/db.py`）。否则 SSE 长连接并发读会与进度写入互锁，报 `database is locked`，级联删除也会失效。
 2. **SSE 流式推送期间零数据库访问**：整章正文在推送开始前一次性读入内存（`services/typing_stream.py`），推送阶段只做内存分批 + `asyncio.sleep`。
-3. **进度写入放在流式结束之后**（`router/chat.py`），客户端中途断开则不推进；推进用条件更新 `WHERE chapter_index = 旧值` 做原子 CAS。
-4. **「当前书」唯一真相源在后端** `settings` 表。前端切换书目必须调用 `POST /api/books/{id}/select`，SSE 也会回发 `book` 事件让前端同步——不要只改前端 state。
-5. **续读偏移只按章节正文计**：服务端通过 `meta` 事件给出 `start_offset` / `char_count`，前端必须剔除标题与收尾文案后再计算偏移。
-6. **指令解析正则必须保持线性**（禁止嵌套量词）+ 输入截断 500 字符（防 ReDoS）；**SQL 必须参数化**，LIKE 关键词必须转义 `%` `_`（`services/chat_engine.py: escape_like`）。
-7. **配置了 `ACCESS_PASSWORD` 却使用默认/空 `SECRET_KEY` 时，应用会拒绝启动**（`main.py: _assert_secure_config`）——这是有意的安全策略，不要移除。
-8. **静态资源挂载必须晚于 `/api` 路由注册**；未注册的 `/api/*` 必须返回 404，不能回退成 `index.html`（`main.py: SPAStaticFiles`）。
-9. TXT 编码探测顺序固定为 BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。许多 GBK 双字节序列恰好是合法 UTF-8，**不要改成 charset-normalizer 优先**。
+3. **进度推进绝不能被静默丢弃**（`services/store.py: write_progress`）。它会先试条件更新（`WHERE chapter_index = 旧值`）以减少多标签页重复推进，**但未命中时必须退化为无条件写入并记 warning**。同一行还会被前端的偏移上报并发 PATCH，这个"假设过期"的窗口是真实存在的——早期实现返回 False 什么都不写，导致「界面显示第 9 章、进度停在第 2 章，下一次『下一章』跳回第 3 章」。忘记这条会重演该 bug。
+4. **「当前书」与阅读进度都是用户级**：存在 `users.current_book_id` 与 `progress(user_id, book_id)`，**不是**全局 `settings`。凡涉及进度的查询都必须带 `user_id`——特别注意 `store.get_current_book` 的**回退分支**（曾按 `updated_at` 全库排序，会让 B 继承 A 最近读的书）。
+5. **书库共享、进度隔离**：所有登录用户看到同一批书；删除书籍需要管理员，且要清掉**所有**用户在该书上的进度，并用 `clear_current_book_reference` 清掉指向它的 `current_book_id`（该列无外键约束，见 `models.py` 模块说明）。
+6. **会话可吊销**：Cookie 载荷是 `{uid, tv}`。`get_current_user` 每次请求都查库校验 用户存在 + 启用 + `token_version` 一致，因此改密/停用/删除后旧会话**下一次请求即失效**。旧版 `{ok:true}` 形态的 Cookie 一律视为无效。
+7. **存在任意用户时，弱/空 `SECRET_KEY` 必须拒绝启动**（`main.py: assert_secure_secret`）。守卫条件已与账号体系绑定——**不要**再依赖 `ACCESS_PASSWORD`（该变量已退役，沿用旧条件会恒为假，从而允许用公开常量自签 Cookie 绕过鉴权）。
+8. **未初始化期间不得暴露数据**：库中无任何用户时，除 `/api/auth/login|status|setup` 外全部 `/api/*` 返回 401（`deps.require_session` 自然满足，因为拿不到合法会话）。
+9. **思考强度同时作用于两端**：服务端分批间隔（`typing_speed`）**与**前端打字机速率（`MessageList` 按倍率缩放 `charsPerTick`）。只调服务端没用——打字机本身有 125 字/秒的硬下限，长章节会被它拖住。档位定义是**服务端唯一事实源**（`services/user_settings.py`），前端从 `GET /api/settings` 读回，不要在前端再抄一份。
+10. **续读偏移只按章节正文计**：服务端通过 `meta` 事件给出 `start_offset` / `char_count`，前端必须剔除标题与收尾文案后再计算偏移；且**只允许当前活跃消息上报**（旧章节滞留的打字机会污染新章节的偏移）。
+11. **流式断句必须能原样拼回**：`typing_stream.split_sentences` 只丢弃真正的空串，**不能**用 `p.strip()` 过滤——`re.split` 会把「只含换行」的片段单独切出来，strip 后判空即被丢弃，段落分隔会在流式阶段被抹掉（长章节糊成一坨）。
+12. **指令解析正则必须保持线性**（禁止嵌套量词）+ 输入截断 500 字符（防 ReDoS）；**SQL 必须参数化**，LIKE 关键词必须转义 `%` `_`（`services/chat_engine.py: escape_like`）。
+13. **静态资源挂载必须晚于 `/api` 路由注册**；未注册的 `/api/*` 必须返回 404，不能回退成 `index.html`（`main.py: SPAStaticFiles`）。
+14. TXT 编码探测顺序固定为 BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。许多 GBK 双字节序列恰好是合法 UTF-8，**不要改成 charset-normalizer 优先**。
+15. **主题与阅读宽度必须留在 localStorage**：首屏防闪烁依赖 CSS 之前的内联脚本直接读 `localStorage`，改成等接口返回必然闪一下。这是有意取舍，不是遗漏。
 
 ## 快速验证
 
 改动后至少跑前两组；涉及流式/前端交互时加跑 E2E。
 
 ```bash
-# 后端（67 passed 为基线）
+# 后端（105 passed 为基线）
 cd backend && .venv/Scripts/python.exe -m pytest -q
 
-# 前端单元测试 + 生产构建（3 passed + 构建成功为基线）
+# 前端单元测试 + 生产构建（7 passed + 构建成功为基线）
 cd frontend && npm run test && npm run build
 
-# 真实浏览器端到端（需先启动后端；首次需 npx playwright install chromium）
-cd frontend && npx playwright test
+# 真实浏览器端到端（29 passed 为基线；需先 npx playwright install chromium）
+cd frontend && E2E_BASE_URL=http://<host>:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> npx playwright test
 ```
 
-E2E 需要后端在运行，并通过环境变量指定地址与密码：
-`E2E_BASE_URL=http://127.0.0.1:8000`、`E2E_PASSWORD=<你的访问密码>`。
-
-历史基线：pytest 67 / vitest 3 / 临时 HTTP 冒烟脚本 13 / Playwright 1（冒烟脚本当时为临时文件，已删除，未入库）。
+- **E2E 串行**（`playwright.config.ts: workers: 1`）：目标环境是单核容器，并行 worker 会把后端压到超时，产生与代码无关的偶发失败。
+- `e2e/_*.spec.ts` 是**一次性工具/诊断脚本**的约定前缀（截图、探针、图标生成），已被 `testIgnore` 排除，不参与回归。需要重跑时临时改名或去掉该 ignore。
+- E2E 需要一个**已初始化的实例**（库里有账号）。若服务尚未初始化，设置 `E2E_SETUP_CODE` 让它走首次引导。
 
 ## 已知未完成与风险
 
-1. **Docker 镜像未在本机实测**（开发机没有 Docker）。Dockerfile 与 compose 按最佳实践编写，但首次 `docker compose up -d --build` 需要人工确认。
-2. **默认分支是 `master`**，GitHub 惯例为 `main`，尚未调整。
-3. **git 提交显示名 `HerrrrDanke` 与账号 `HerrDanke` 不一致**（仅显示名，邮箱正确，提交仍会关联账号）。只影响未来提交，已推送的历史不追改。
-4. **登录无速率限制**：单用户场景暂可接受，公网暴露前建议在反向代理层限制。
-5. **超大文件导入内存峰值高**：接近上限（默认 100MB）时整体读入内存再解析。已移入线程池避免阻塞事件循环，但没有做流式解析。
-6. **服务端无法真正中断进行中的流**：客户端 `AbortController` 只停止渲染与进度写入，服务端生成器仍会跑完（不影响数据正确性）。
-7. **搜索引擎是标题 LIKE**，不支持正文检索。
+1. **默认分支是 `master`**，GitHub 惯例为 `main`，尚未调整。
+2. **git 提交显示名 `HerrrrDanke` 与账号 `HerrDanke` 不一致**（仅显示名，邮箱正确，提交仍会关联账号）。只影响未来提交，已推送的历史不追改。
+3. **超大文件导入内存峰值高**：接近上限（默认 100MB）时整体读入内存再解析。已移入线程池避免阻塞事件循环，但没有做流式解析。
+4. **服务端无法真正中断进行中的流**：客户端 `AbortController` 只停止渲染与进度写入，服务端生成器仍会跑完（不影响数据正确性）。
+5. **搜索引擎是标题 LIKE**，不支持正文检索。
+6. **登录限速与引导口令是内存实现**（`services/ratelimit.py`、`security.py`）：**一旦改为多 worker 或水平扩容即失效**，届时需换成共享存储。这是扩容的前置条件。
+7. **删除书籍不清理 `/novels` 里的原文备份**，会留孤儿文件（导入失败时会清理，删除时不会）。
+8. **没有审计日志 / 登录失败留痕**：排查入侵时无据可查。
+9. **密码强度下限只有 4 位**（为了照顾短口令的使用习惯），公网部署前应配合 HTTPS 与强口令。
 
 ## 下一步建议（按价值排序）
 
-1. 划词批注 / 高亮（CEO 评审中列为延后项的增强）
-2. EPUB 支持——`backend/app/readers/base.py` 的 `BaseReader` 接口已为扩展预留
-3. 真实服务 HTTP 冒烟脚本入库（当前为临时脚本）或补充为 pytest 集成测试
-4. 章节正文搜索升级到 SQLite FTS5
-5. 阅读体验：字号/行距预设、读当前章时预取下一章
-6. 部署体验：GitHub Actions 自动构建镜像；默认分支改为 `main`
+1. **划词批注 / 高亮**（CEO 评审中列为延后项）
+2. **EPUB 支持**——`backend/app/readers/base.py` 的 `BaseReader` 接口已为扩展预留
+3. **把删除书籍时的原文备份一并清理**（当前会留孤儿，见风险 7）
+4. **章节正文搜索升级到 SQLite FTS5**（当前只有标题 LIKE）
+5. **阅读体验**：字号/行距预设、读当前章时预取下一章、目录里的已读标记
+6. **部署体验**：GitHub Actions 自动构建镜像、配 HTTPS（Caddy）、默认分支改 `main`
+7. **多 worker 前的改造**：限速与引导口令改为共享存储（见风险 6）
 
 ## 建议调用的 skills
 
@@ -84,9 +92,9 @@ E2E 需要后端在运行，并通过环境变量指定地址与密码：
 | 提交并开 PR | `commit-push-pr` |
 | 排查 bug | `systematic-debugging` / `investigate` |
 | 变更完成要归档 | `openspec-archive-change` |
-| 更新项目文档 | `document-release` |
+| 更新项目文档 | `document-release`（本文件的更新就走它） |
 | 本轮复盘 | `retro` |
 
 ## 敏感信息
 
-本文件不含任何密钥或个人信息。部署所需的 `ACCESS_PASSWORD` 与 `SECRET_KEY` 只应存在于使用者本机的 `.env`（已被 `.gitignore` 排除）。请勿把真实密码写入仓库任何文件——包括本文件。
+本文件不含任何密钥或个人信息。部署所需的 `SECRET_KEY`（以及管理员密码）只应存在于服务器本机的 `.env` / 数据库里（`.env` 已被 `.gitignore` 排除）。**`ACCESS_PASSWORD` 已退役**——账号体系取代了它。请勿把真实密码写入仓库任何文件——包括本文件。
