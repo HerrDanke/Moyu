@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -12,6 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..models import Book, Progress, Setting, User
+
+logger = logging.getLogger("moyu.store")
 
 
 def get_setting(session: Session, key: str, default: str | None = None) -> str | None:
@@ -75,9 +78,12 @@ def write_progress(
 ) -> bool:
     """写阅读进度（用户级）。
 
-    conditional_from 非空时做**原子 CAS**（UPDATE ... WHERE chapter_index = 旧值），
-    并发下只有一次推进生效，避免多标签页重复推进导致丢更新。
-    require_row 为真时，不存在的行不会被创建（用于「只更新已存在的进度」场景）。
+    conditional_from 非空时会先尝试原子 CAS（UPDATE ... WHERE chapter_index = 旧值），
+    以减少多标签页重复推进；**但 CAS 未命中时会退化为无条件写入**——
+    章节推进代表用户已经看到了新章节的正文，绝不能因为「旧章号」这个假设过期
+    就把整次推进静默丢掉（否则界面显示第 9 章、进度却停在第 2 章，
+    下一次「下一章」会跳错章）。同一行还会被前端的偏移上报并发写入，
+    这个窗口是真实存在的。
     """
     existing = session.get(Progress, (user_id, book_id))
     if existing is None:
@@ -115,8 +121,22 @@ def write_progress(
             )
         )
         session.commit()
-        return result.rowcount > 0
+        if result.rowcount > 0:
+            return True
+        # CAS 未命中：说明「旧章号」假设已过期（例如前端的偏移上报并发改了同一行）。
+        # 此时绝不能静默丢弃这次推进，退化为无条件写入。
+        logger.warning(
+            "progress CAS 未命中，退化为直接写入：user=%s book=%s from=%s to=%s",
+            user_id,
+            book_id,
+            conditional_from,
+            chapter_index,
+        )
+        session.expire_all()
 
+    existing = session.get(Progress, (user_id, book_id))
+    if existing is None:
+        return False
     existing.chapter_index = chapter_index
     existing.chapter_offset = offset
     session.commit()

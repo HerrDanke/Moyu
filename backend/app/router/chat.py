@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -17,6 +19,8 @@ from ..services.chat_engine import build_response
 from ..services.typing_stream import stream_headers, stream_response
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+logger = logging.getLogger("moyu.chat")
 
 
 @router.post("")
@@ -40,7 +44,9 @@ async def chat(
     async def event_generator():
         async for chunk in stream_response(response, settings, quick_read=payload.quick_read):
             yield chunk
-        # 流式正常结束后才推进进度（条件更新防多标签页重复推进）
+        # 流式正常结束后才推进进度。
+        # 注意：这里不能静默吞异常——进度写失败会导致「界面在第 9 章、进度还在第 2 章」，
+        # 下一次「下一章」就会跳错章。至少要留下日志。
         if book_id is not None:
             fresh = session_factory()
             try:
@@ -52,8 +58,14 @@ async def chat(
                     offset,
                     conditional_from=conditional_from,
                 )
-            except Exception:  # noqa: BLE001 - 用户可能已被删除；不应让流式请求 500
+            except Exception:  # noqa: BLE001
                 fresh.rollback()
+                logger.exception(
+                    "写入阅读进度失败：user=%s book=%s chapter=%s",
+                    user_id,
+                    book_id,
+                    chapter_index,
+                )
             finally:
                 fresh.close()
 

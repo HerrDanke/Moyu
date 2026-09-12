@@ -40,11 +40,15 @@ def test_write_progress_atomic_cas(client, admin_id, app):
     book_id = import_sample(client)["book_id"]
     session = app.state.session_factory()
     store.write_progress(session, admin_id, book_id, 1, 0)
-    # 旧值匹配 → 推进成功
+    # 旧值匹配 → 走 CAS 快路径推进成功
     assert store.write_progress(session, admin_id, book_id, 2, 0, conditional_from=1) is True
-    # 旧值不匹配 → 原子 CAS 失败，不改动
-    assert store.write_progress(session, admin_id, book_id, 3, 0, conditional_from=1) is False
     assert store.get_progress(session, admin_id, book_id).chapter_index == 2
+
+    # 旧值不匹配（假设过期）→ 仍然推进，绝不静默丢弃。
+    # 语义变更说明：早期实现返回 False 且什么都不写，导致「用户已看到新章节、
+    # 进度却停在上一个章号」，下一次「下一章」就跳错章。详见 test_progress_advance.py。
+    assert store.write_progress(session, admin_id, book_id, 3, 0, conditional_from=1) is True
+    assert store.get_progress(session, admin_id, book_id).chapter_index == 3
     session.close()
 
 

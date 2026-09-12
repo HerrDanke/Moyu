@@ -70,6 +70,10 @@ export default function App() {
   const lastPatchRef = useRef(0);
   const messagesRef = useRef<ChatMessage[]>([]);
   const currentIdRef = useRef<number | null>(null);
+  // 只有「当前正在阅读的这条消息」允许上报偏移：
+  // 上一章的打字机在流式结束后还会继续跑几十秒，若不拦住，
+  // 它会把新章节的偏移覆盖成旧章节的位置。
+  const activeMsgIdRef = useRef<string | null>(null);
 
   messagesRef.current = messages;
   currentIdRef.current = currentId;
@@ -259,6 +263,7 @@ export default function App() {
     const asstMsg: ChatMessage = { id: asstId, role: "assistant", text: "", streaming: true };
     setMessages((m) => [...m, userMsg, asstMsg]);
     setStreaming(true);
+    activeMsgIdRef.current = asstId;
 
     const update = (patch: Partial<ChatMessage> | ((prev: ChatMessage) => ChatMessage)) => {
       setMessages((m) =>
@@ -370,6 +375,8 @@ export default function App() {
 
   /** 上报续读偏移：只按章节正文字符数计算，并把服务端返回的进度回写本地。 */
   const handleProgressReport = useCallback((messageId: string, revealed: number) => {
+    // 只认当前活跃消息：旧章节的滞留打字机不得写入进度
+    if (messageId !== activeMsgIdRef.current) return;
     const msg = messagesRef.current.find((m) => m.id === messageId);
     if (!msg || msg.startOffset === undefined || msg.charCount === undefined) return;
     const bookId = msg.bookId ?? currentIdRef.current;
