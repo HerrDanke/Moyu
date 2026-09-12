@@ -168,6 +168,8 @@ export default function App() {
       void loadAllProgress(list);
       setCurrentId(res.book_id);
       localStorage.setItem(BOOK_KEY, String(res.book_id));
+      // 必须同步服务端「当前书」，否则「下一章」会读到上一本
+      void selectBook(res.book_id).catch(() => {});
       setSidebarOpen(false);
       setMessages([
         {
