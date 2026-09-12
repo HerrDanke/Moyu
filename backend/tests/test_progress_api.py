@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from app.models import Progress
 from app.services import store
 
 from .conftest import import_sample
 
 
-def test_default_progress_is_first_chapter(client):
+def test_default_progress_is_first_chapter(client, admin_id):
     book_id = import_sample(client)["book_id"]
     resp = client.get(f"/api/progress/{book_id}").json()
+    assert resp["user_id"] == admin_id
     assert resp["chapter_index"] == 1
     assert resp["chapter_offset"] == 0
 
@@ -36,28 +36,27 @@ def test_offset_only_update_keeps_chapter(client):
     assert resp["chapter_offset"] == 42
 
 
-def test_write_progress_atomic_cas(client, app):
-    from app.models import Progress
-
+def test_write_progress_atomic_cas(client, admin_id, app):
     book_id = import_sample(client)["book_id"]
     session = app.state.session_factory()
-    store.write_progress(session, book_id, 1, 0)
+    store.write_progress(session, admin_id, book_id, 1, 0)
     # 旧值匹配 → 推进成功
-    assert store.write_progress(session, book_id, 2, 0, conditional_from=1) is True
+    assert store.write_progress(session, admin_id, book_id, 2, 0, conditional_from=1) is True
     # 旧值不匹配 → 原子 CAS 失败，不改动
-    assert store.write_progress(session, book_id, 3, 0, conditional_from=1) is False
-    assert session.get(Progress, book_id).chapter_index == 2
+    assert store.write_progress(session, admin_id, book_id, 3, 0, conditional_from=1) is False
+    assert store.get_progress(session, admin_id, book_id).chapter_index == 2
     session.close()
 
 
-def test_write_progress_optimistic_lock(client, app):
+def test_progress_is_scoped_per_user(client, other_client, admin_id, app):
     book_id = import_sample(client)["book_id"]
+    client.patch(f"/api/progress/{book_id}", json={"chapter_index": 2})
+
+    # 另一个用户看到的是自己的默认进度，而不是别人的
+    other = other_client.get(f"/api/progress/{book_id}").json()
+    assert other["chapter_index"] == 1
+    assert other["user_id"] != admin_id
+
     session = app.state.session_factory()
-    store.write_progress(session, book_id, 2, 0)
-    ok = store.write_progress(session, book_id, 3, 0, conditional_from=1)
-    assert ok is False
-    progress = session.get(Progress, book_id)
-    assert progress.chapter_index == 2
-    ok2 = store.write_progress(session, book_id, 3, 0, conditional_from=2)
-    assert ok2 is True
+    assert store.get_progress(session, admin_id, book_id).chapter_index == 2
     session.close()

@@ -11,6 +11,7 @@ import {
   onUnauthorized,
   patchProgress,
   selectBook,
+  setup as setupAccount,
   streamChat,
 } from "./api/client";
 import type {
@@ -20,12 +21,15 @@ import type {
   Progress,
   ReadingMode,
   Theme,
+  User,
 } from "./types";
 import { MessageList } from "./components/MessageList";
 import { Composer } from "./components/Composer";
 import { Sidebar } from "./components/Sidebar";
 import { EmptyState } from "./components/EmptyState";
 import { LoginPage } from "./components/LoginPage";
+import { SetupPage } from "./components/SetupPage";
+import { UserAdminDialog } from "./components/UserAdminDialog";
 import { newId } from "./utils/id";
 import { formatProgressLabel } from "./utils/progress";
 
@@ -33,10 +37,12 @@ const THEME_KEY = "moyu_theme";
 const BOOK_KEY = "moyu_current_book";
 const READING_KEY = "moyu_reading_mode";
 
-type AuthState = "checking" | "login" | "ok";
+type AuthState = "checking" | "setup" | "login" | "ok";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userAdminOpen, setUserAdminOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -75,14 +81,26 @@ export default function App() {
   }, [readingMode]);
 
   useEffect(() => {
-    onUnauthorized(() => setAuth("login"));
+    onUnauthorized(() => {
+      setCurrentUser(null);
+      setAuth("login");
+    });
   }, []);
 
   useEffect(() => {
     (async () => {
       try {
         const s = await getAuthStatus();
-        setAuth(s.authenticated ? "ok" : "login");
+        if (s.setup_required) {
+          setAuth("setup");
+          return;
+        }
+        if (s.authenticated && s.user) {
+          setCurrentUser(s.user);
+          setAuth("ok");
+        } else {
+          setAuth("login");
+        }
       } catch {
         setAuth("login");
       }
@@ -132,18 +150,31 @@ export default function App() {
     })();
   }, [currentId]);
 
-  const handleLogin = async (password: string) => {
+  const handleLogin = async (username: string, password: string) => {
     setLoginError(null);
     try {
-      await login(password);
+      const user = await login(username, password);
+      setCurrentUser(user);
       setAuth("ok");
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "登录失败");
     }
   };
 
+  const handleSetup = async (username: string, password: string, setupCode: string) => {
+    setLoginError(null);
+    try {
+      const user = await setupAccount(username, password, setupCode);
+      setCurrentUser(user);
+      setAuth("ok");
+    } catch (e) {
+      setLoginError(e instanceof Error ? e.message : "创建失败");
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
+    setCurrentUser(null);
     setAuth("login");
     setMessages([]);
   };
@@ -358,7 +389,9 @@ export default function App() {
   }, [progressMap]);
 
   if (auth === "checking") return <div className="loading">加载中…</div>;
-  if (auth === "login") return <LoginPage onSubmit={handleLogin} error={loginError} />;
+  if (auth === "setup") return <SetupPage onSubmit={handleSetup} error={loginError} />;
+  if (auth === "login" || !currentUser)
+    return <LoginPage onSubmit={handleLogin} error={loginError} />;
 
   const isEmpty = messages.length === 0;
 
@@ -384,7 +417,16 @@ export default function App() {
         onLogout={handleLogout}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        currentUser={currentUser}
+        onOpenUserAdmin={() => setUserAdminOpen(true)}
       />
+
+      {userAdminOpen && currentUser.is_admin && (
+        <UserAdminDialog
+          currentUser={currentUser}
+          onClose={() => setUserAdminOpen(false)}
+        />
+      )}
 
       <main className={`main${isEmpty ? " is-empty" : ""}`}>
         <button

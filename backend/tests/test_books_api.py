@@ -75,16 +75,31 @@ def test_search_wildcard_is_escaped(client):
     assert resp.json()["hits"] == []
 
 
-def test_select_book_sets_current(client, app):
+def test_select_book_sets_current(client, admin_id, app):
+    from app.models import User
     from app.services import store
 
     book_id = import_sample(client)["book_id"]
     resp = client.post(f"/api/books/{book_id}/select")
     assert resp.status_code == 200
     session = app.state.session_factory()
-    current = store.get_current_book(session)
+    user = session.get(User, admin_id)
+    current = store.get_current_book(session, user)
     session.close()
     assert current is not None and current.id == book_id
+
+
+def test_import_records_uploader(client, admin_id):
+    import_sample(client)
+    books = client.get("/api/books").json()
+    assert books[0]["uploaded_by"] == admin_id
+    assert books[0]["uploaded_by_name"] == "admin"
+
+
+def test_delete_book_requires_admin(other_client, client):
+    book_id = import_sample(client)["book_id"]
+    assert other_client.delete(f"/api/books/{book_id}").status_code == 403
+    assert client.delete(f"/api/books/{book_id}").status_code == 200
 
 
 def test_unknown_api_path_is_404_not_html(tmp_path):

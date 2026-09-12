@@ -1,6 +1,6 @@
 """对话流：POST /api/chat → text/event-stream。
 
-进度写入放在流式结束之后（客户端中途断开则不推进）。
+进度写入放在流式结束之后（客户端中途断开则不推进），且按当前登录用户记账。
 """
 from __future__ import annotations
 
@@ -10,14 +10,13 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings
 from ..deps import get_app_settings, get_db, require_session
+from ..models import User
 from ..schemas import ChatRequest
 from ..services import store
 from ..services.chat_engine import build_response
 from ..services.typing_stream import stream_headers, stream_response
 
-router = APIRouter(
-    prefix="/api/chat", tags=["chat"], dependencies=[Depends(require_session)]
-)
+router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 @router.post("")
@@ -26,8 +25,10 @@ async def chat(
     payload: ChatRequest,
     session: Session = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
+    user: User = Depends(require_session),
 ):
-    response = build_response(session, settings, payload.message)
+    response = build_response(session, settings, payload.message, user)
+    user_id = user.id
     book_id = response.progress_book_id
     chapter_index = response.progress_chapter_index
     offset = response.progress_offset or 0
@@ -45,11 +46,14 @@ async def chat(
             try:
                 store.write_progress(
                     fresh,
+                    user_id,
                     book_id,
                     chapter_index or 1,
                     offset,
                     conditional_from=conditional_from,
                 )
+            except Exception:  # noqa: BLE001 - 用户可能已被删除；不应让流式请求 500
+                fresh.rollback()
             finally:
                 fresh.close()
 

@@ -7,9 +7,8 @@ services:
     ports:
       - "${BIND_HOST:-127.0.0.1}:${PORT:-8000}:8000"
     environment:
-      # 未设置时会直接报错并提示（避免用默认密码/密钥上线）
-      ACCESS_PASSWORD: ${ACCESS_PASSWORD:?请先 cp .env.example .env 并设置 ACCESS_PASSWORD}
-      SECRET_KEY: ${SECRET_KEY:?请先 cp .env.example .env 并设置 SECRET_KEY}
+      # 未设置时会直接报错并提示（避免用默认密钥上线，否则会话可被伪造）
+      SECRET_KEY: ${SECRET_KEY:?请先 cp .env.example .env 并设置一个随机的 SECRET_KEY}
       TYPING_SPEED: ${TYPING_SPEED:-1.0}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:

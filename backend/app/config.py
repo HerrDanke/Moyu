@@ -5,6 +5,17 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+# 已知弱密钥：一旦存在用户，用这些值启动会被拒绝（否则可自签会话 Cookie 绕过鉴权）
+INSECURE_SECRETS = {
+    "",
+    "dev-secret-change-me",
+    "please-change-me",
+    "please-change-me-to-a-long-random-string",
+    "changeme",
+    "change-me",
+    "secret",
+}
+
 
 @dataclass
 class Settings:
@@ -13,7 +24,6 @@ class Settings:
     novel_dir: Path = Path("./novels")
     static_dir: Path = Path("./frontend/dist")
     typing_speed: float = 1.0
-    access_password: str = ""
     secret_key: str = "dev-secret-change-me"
     cookie_secure: bool = False  # 走 HTTPS 时设为 True
     max_upload_bytes: int = 100 * 1024 * 1024  # 100MB
@@ -44,7 +54,6 @@ class Settings:
             novel_dir=_path("NOVEL_DIR", "./novels"),
             static_dir=_path("STATIC_DIR", "./frontend/dist"),
             typing_speed=float(os.environ.get("TYPING_SPEED", "1.0")),
-            access_password=os.environ.get("ACCESS_PASSWORD", ""),
             secret_key=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
             cookie_secure=os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes"},
             max_upload_bytes=int(

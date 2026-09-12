@@ -17,18 +17,23 @@
 
 ```bash
 cp .env.example .env
-# 编辑 .env：必须设置 ACCESS_PASSWORD 与一个随机的 SECRET_KEY（否则容器拒绝启动）
+# 编辑 .env：设置一个随机的 SECRET_KEY（openssl rand -hex 32）
 docker compose up -d --build
+docker compose logs | grep 引导口令     # 首次启动会打印一次性引导口令
 ```
 
-浏览器打开 `http://localhost:8000`，输入访问密码，导入一个 TXT 小说，然后说「下一章」。
+浏览器打开 `http://localhost:8000`，按引导页创建**第一个管理员**（需要上面那串引导口令），
+然后登录、导入 TXT 小说并开始阅读。
 
-- 默认仅绑定 `127.0.0.1`（本机可访问）。要对外提供，在 `.env` 设 `BIND_HOST=0.0.0.0`，**并务必设置强密码**，建议再套一层反向代理鉴权。
+- 账号由管理员在界面的「用户管理」里创建，**不开放自助注册**。
+- **书库全体用户共享，阅读进度按用户独立**：两个人可以读同一本书而互不干扰。
+- 默认仅绑定 `127.0.0.1`（本机可访问）。要对外提供，在 `.env` 设 `BIND_HOST=0.0.0.0`，**并务必走 HTTPS**。
 - 数据存在 Docker 命名卷 `moyu-data`（SQLite）与 `moyu-novels`（原文备份）中：
   `docker volume inspect moyu_moyu-data` 查看位置，`docker compose down` 不会删除它们。
 - 若想改用宿主目录绑定挂载，把 compose 里的 `moyu-data:/data` 换成 `./data:/data`，
   并先确保目录属主为容器用户：`mkdir -p data novels && sudo chown -R 10001:10001 data novels`
   （否则非 root 容器无法写入，会启动失败）。
+- 从旧版本（共享访问密码）升级：无需手工迁移。老数据会自动归属到第一个管理员。
 
 ## 本地开发
 
@@ -67,8 +72,7 @@ cd frontend && npm run test:e2e
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `ACCESS_PASSWORD` | 空 | 访问密码；为空则不校验（仅建议本地） |
-| `SECRET_KEY` | dev 值 | 会话 Cookie 签名密钥，**必改**；启用密码却用默认值会拒绝启动 |
+| `SECRET_KEY` | dev 值 | 会话签名密钥，**必改**；存在账号却用默认值会拒绝启动 |
 | `COOKIE_SECURE` | false | 经 HTTPS 反代访问时设为 true |
 | `PORT` | 8000 | 对外端口 |
 | `BIND_HOST` | 127.0.0.1 | compose 绑定的宿主地址 |
@@ -76,6 +80,9 @@ cd frontend && npm run test:e2e
 | `NOVEL_DIR` | ./novels | 导入原文备份目录 |
 | `STATIC_DIR` | ./frontend/dist | 前端产物目录 |
 | `TYPING_SPEED` | 1.0 | 打字机速度，越大越快；`0` 表示不节流 |
+
+**账号不从环境变量配置**：首次启动时若库中无任何用户，服务会在日志里打印一次性**引导口令**，
+用它在网页上创建第一个管理员。此后账号由管理员在「用户管理」里维护。
 
 ## 支持的聊天指令
 

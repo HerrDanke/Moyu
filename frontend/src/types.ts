@@ -1,8 +1,24 @@
+export interface User {
+  id: number;
+  username: string;
+  is_admin: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AuthStatus {
+  setup_required: boolean;
+  authenticated: boolean;
+  user: User | null;
+}
+
 export interface Book {
   id: number;
   title: string;
   source_filename: string;
   total_chapters: number;
+  uploaded_by: number | null;
+  uploaded_by_name: string | null;
   created_at: string;
 }
 
@@ -13,6 +29,7 @@ export interface ChapterMeta {
 }
 
 export interface Progress {
+  user_id: number;
   book_id: number;
   chapter_index: number;
   chapter_offset: number;

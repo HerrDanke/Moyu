@@ -1,15 +1,24 @@
 """FastAPI 应用入口：注册 API 路由，最后挂载前端静态产物（含 SPA fallback）。"""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .config import Settings, get_settings
-from .db import create_engine_for, create_session_factory, init_db
-from .router import auth, books, chat, progress, search
+from .config import INSECURE_SECRETS, Settings, get_settings
+from .db import count_users, create_engine_for, create_session_factory, init_db
+from .router import auth, books, chat, progress, search, users
+from .security import generate_setup_code, set_setup_code
+
+logger = logging.getLogger("moyu")
+
+INSECURE_SECRET_HINT = (
+    "SECRET_KEY 为空或属于默认弱值。请设置一个足够随机的值（例如 `openssl rand -hex 32`），"
+    "见 .env.example。否则任何人都能用这个公开常量自签会话 Cookie，绕过鉴权。"
+)
 
 
 class SPAStaticFiles(StaticFiles):
@@ -34,32 +43,59 @@ class SPAStaticFiles(StaticFiles):
         return response
 
 
-INSECURE_SECRETS = {"", "dev-secret-change-me", "please-change-me", "changeme", "change-me"}
+def assert_secure_secret(settings: Settings) -> None:
+    """已存在用户时，弱密钥必须拒绝启动。
+
+    注意：这里**不能**再依赖 ACCESS_PASSWORD —— 账号体系下该变量已退役，
+    沿用旧条件会恒为假，从而允许用公开的默认常量签发可伪造的会话 Cookie。
+    """
+    if settings.secret_key in INSECURE_SECRETS:
+        raise RuntimeError(INSECURE_SECRET_HINT)
 
 
-def _assert_secure_config(settings: Settings) -> None:
-    """配置了访问密码却使用默认/空密钥时，拒绝启动（否则可伪造 Cookie 绕过鉴权）。"""
-    if settings.access_password and settings.secret_key in INSECURE_SECRETS:
-        raise RuntimeError(
-            "检测到 ACCESS_PASSWORD 已启用但 SECRET_KEY 为默认值/空值。"
-            "请设置一个足够随机的 SECRET_KEY（见 .env.example），否则会话可被伪造。"
-        )
+def setup_required(session_factory) -> bool:
+    session = session_factory()
+    try:
+        return count_users(session) == 0
+    finally:
+        session.close()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    _assert_secure_config(settings)
     settings.ensure_dirs()
 
-    app = FastAPI(title="Moyu", version="0.1.0")
+    app = FastAPI(title="Moyu", version="0.2.0")
     engine = create_engine_for(settings)
     init_db(engine)
+    session_factory = create_session_factory(engine)
     app.state.engine = engine
-    app.state.session_factory = create_session_factory(engine)
+    app.state.session_factory = session_factory
     app.state.settings = settings
+
+    # 有用户却用弱密钥 → 拒绝启动
+    if not setup_required(session_factory):
+        assert_secure_secret(settings)
+    else:
+        # 首次运行：生成一次性引导口令（只出现在服务器日志里）
+        code = generate_setup_code()
+        set_setup_code(code)
+        logger.warning(
+            "[setup] 尚未创建任何账号。请打开应用并按提示创建管理员，引导口令：%s "
+            "（该口令仅在本次启动期间有效）",
+            code,
+        )
+        print(
+            f"\n[setup] 未检测到任何用户。首次引导口令：{code}\n"
+            f"[setup] 若 SECRET_KEY 仍为默认值，请在完成引导前先设置一个随机值。\n",
+            flush=True,
+        )
+        if settings.secret_key in INSECURE_SECRETS:
+            logger.warning("[setup] 当前 SECRET_KEY 为默认弱值，引导接口会拒绝创建管理员。")
 
     # 1) 先注册所有 /api/* 路由
     app.include_router(auth.router)
+    app.include_router(users.router)
     app.include_router(books.router)
     app.include_router(progress.router)
     app.include_router(search.router)

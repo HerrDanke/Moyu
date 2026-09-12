@@ -1,9 +1,11 @@
 import type {
+  AuthStatus,
   Book,
   ChapterMeta,
   ImportResult,
   Progress,
   StreamEvent,
+  User,
 } from "../types";
 
 const BASE: string = import.meta.env.VITE_API_BASE ?? "";
@@ -39,22 +41,76 @@ async function handle<T>(resp: Response, opts: { auth?: boolean } = {}): Promise
   return (await resp.json()) as T;
 }
 
-export async function getAuthStatus(): Promise<{
-  password_required: boolean;
-  authenticated: boolean;
-}> {
+export async function getAuthStatus(): Promise<AuthStatus> {
   return handle(await fetch(`${BASE}/api/auth/status`));
 }
 
-export async function login(password: string): Promise<void> {
-  await handle(
+export async function login(username: string, password: string): Promise<User> {
+  return handle(
     await fetch(`${BASE}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ username, password }),
     }),
     { auth: true },
   );
+}
+
+export async function setup(
+  username: string,
+  password: string,
+  setupCode: string,
+): Promise<User> {
+  return handle(
+    await fetch(`${BASE}/api/auth/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, setup_code: setupCode }),
+    }),
+    { auth: true },
+  );
+}
+
+export async function getMe(): Promise<User> {
+  return handle(await fetch(`${BASE}/api/auth/me`));
+}
+
+// --------------------------------------------------------------------------
+// 用户管理（管理员）
+// --------------------------------------------------------------------------
+export async function listUsers(): Promise<User[]> {
+  return handle(await fetch(`${BASE}/api/users`));
+}
+
+export async function createUser(
+  username: string,
+  password: string,
+  isAdmin: boolean,
+): Promise<User> {
+  return handle(
+    await fetch(`${BASE}/api/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, is_admin: isAdmin }),
+    }),
+  );
+}
+
+export async function updateUser(
+  userId: number,
+  patch: { password?: string; is_admin?: boolean; is_active?: boolean },
+): Promise<User> {
+  return handle(
+    await fetch(`${BASE}/api/users/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  );
+}
+
+export async function deleteUser(userId: number): Promise<void> {
+  await handle(await fetch(`${BASE}/api/users/${userId}`, { method: "DELETE" }));
 }
 
 export async function logout(): Promise<void> {

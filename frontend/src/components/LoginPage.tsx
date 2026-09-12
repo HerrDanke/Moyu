@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { Logo } from "./Logo";
 
 interface Props {
-  onSubmit: (password: string) => void;
+  onSubmit: (username: string, password: string) => void;
   error: string | null;
 }
 
 export function LoginPage({ onSubmit, error }: Props) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   return (
@@ -14,17 +16,29 @@ export function LoginPage({ onSubmit, error }: Props) {
         className="login-card"
         onSubmit={(e) => {
           e.preventDefault();
-          if (password) onSubmit(password);
+          if (username && password) onSubmit(username, password);
         }}
       >
-        <h1>墨鱼</h1>
-        <p className="subtitle">请输入访问密码</p>
+        <div className="login-brand">
+          <Logo size={26} />
+          <h1>墨鱼</h1>
+        </div>
+        <p className="subtitle">登录后继续阅读</p>
+        <input
+          data-testid="login-username"
+          type="text"
+          value={username}
+          placeholder="用户名"
+          autoComplete="username"
+          autoFocus
+          onChange={(e) => setUsername(e.target.value)}
+        />
         <input
           data-testid="login-password"
           type="password"
           value={password}
-          placeholder="访问密码"
-          autoFocus
+          placeholder="密码"
+          autoComplete="current-password"
           onChange={(e) => setPassword(e.target.value)}
         />
         {error && <p className="error">{error}</p>}

@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import Settings
-from ..models import Book, Chapter, Progress
+from ..models import Book, Chapter, User
 from . import store
 
 # 线性正则（无嵌套量词），配合输入截断避免 ReDoS
@@ -130,20 +130,18 @@ def _get_chapter(session: Session, book_id: int, index_no: int) -> Chapter | Non
     )
 
 
-def _progress(session: Session, book_id: int) -> Progress | None:
-    return session.get(Progress, book_id)
-
-
 def _no_book_response(session: Session) -> ChatResponse:
     total = session.scalar(select(func.count(Book.id))) or 0
     if total == 0:
         return _text_response(
-            "你好，我还没看到你的藏书。先点右上角把一本 TXT 小说导入进来，我们就能开始读了。"
+            "你好，我还没看到你的藏书。先点左侧「导入新书」把一本 TXT 小说导入进来，我们就能开始读了。"
         )
     return _text_response("想读哪本书？回复『书单』看看收藏。")
 
 
-def build_response(session: Session, settings: Settings, message: str) -> ChatResponse:
+def build_response(
+    session: Session, settings: Settings, message: str, user: User
+) -> ChatResponse:
     intent = parse_intent(message, settings.max_input_chars)
 
     if intent.kind == "help":
@@ -166,8 +164,8 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
         )
         if book is None:
             return _text_response(f"没找到叫「{keyword}」的书，回复『书单』看看有哪些吧。")
-        store.set_current_book(session, book.id)
-        prog = _progress(session, book.id)
+        store.set_current_book(session, user, book.id)
+        prog = store.get_progress(session, user.id, book.id)
         index = prog.chapter_index if prog else 1
         offset = prog.chapter_offset if prog else 0
         chapter = _get_chapter(session, book.id, index)
@@ -179,7 +177,7 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
         keyword = (intent.keyword or "").strip()
         if not keyword:
             return _text_response("想搜什么？把关键词告诉我，比如「搜 韩立」。")
-        book = store.get_current_book(session)
+        book = store.get_current_book(session, user)
         if book is None:
             return _no_book_response(session)
         hits = session.scalars(
@@ -199,11 +197,11 @@ def build_response(session: Session, settings: Settings, message: str) -> ChatRe
         )
 
     # next / prev / goto 需要当前书
-    book = store.get_current_book(session)
+    book = store.get_current_book(session, user)
     if book is None:
         return _no_book_response(session)
 
-    prog = _progress(session, book.id)
+    prog = store.get_progress(session, user.id, book.id)
     current = prog.chapter_index if prog else 0
     prev_index = prog.chapter_index if prog else None
     max_index = session.scalar(

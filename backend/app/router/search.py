@@ -6,14 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..deps import get_db, require_session
-from ..models import Chapter
+from ..models import Chapter, User
 from ..schemas import SearchHit, SearchResult
 from ..services import store
 from ..services.chat_engine import escape_like
 
-router = APIRouter(
-    prefix="/api/search", tags=["search"], dependencies=[Depends(require_session)]
-)
+router = APIRouter(prefix="/api/search", tags=["search"])
 
 
 @router.get("", response_model=SearchResult)
@@ -21,13 +19,15 @@ def search(
     q: str = Query(default="", max_length=200),
     book_id: int | None = Query(default=None),
     session: Session = Depends(get_db),
+    user: User = Depends(require_session),
 ):
     keyword = (q or "").strip()
     if not keyword:
         return SearchResult(book_id=book_id, query=q, hits=[])
     target_id = book_id
     if target_id is None:
-        book = store.get_current_book(session)
+        # 未指定书时使用**当前用户自己**的当前书
+        book = store.get_current_book(session, user)
         target_id = book.id if book else None
     if target_id is None:
         return SearchResult(book_id=None, query=q, hits=[])

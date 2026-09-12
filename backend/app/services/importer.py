@@ -36,6 +36,7 @@ def import_book(
     data: bytes,
     filename: str | None,
     settings: Settings,
+    uploaded_by: int | None = None,
     reader: BaseReader | None = None,
 ) -> tuple[Book, str | None]:
     """导入一本书，返回 (Book, 提示文案)。失败抛 ImporterError。"""
@@ -65,7 +66,12 @@ def import_book(
     backup_path.write_bytes(data)
 
     try:
-        book = Book(title=title, source_filename=safe_name, total_chapters=len(parsed.chapters))
+        book = Book(
+            title=title,
+            source_filename=safe_name,
+            total_chapters=len(parsed.chapters),
+            uploaded_by=uploaded_by,
+        )
         session.add(book)
         session.flush()  # 拿到 book.id
         for ch in parsed.chapters:

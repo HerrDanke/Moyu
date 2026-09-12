@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { Book, ReadingMode, Theme } from "../types";
+import type { Book, ReadingMode, Theme, User } from "../types";
+import { Logo } from "./Logo";
 
 interface Props {
   books: Book[];
@@ -21,6 +22,8 @@ interface Props {
   onLogout: () => void;
   open: boolean;
   onClose: () => void;
+  currentUser: User;
+  onOpenUserAdmin: () => void;
 }
 
 export function Sidebar({
@@ -41,6 +44,8 @@ export function Sidebar({
   onLogout,
   open,
   onClose,
+  currentUser,
+  onOpenUserAdmin,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -86,7 +91,10 @@ export function Sidebar({
         aria-label="书架与设置"
       >
         <div className="sidebar-head">
-          <span className="brand">墨鱼</span>
+          <span className="brand" data-testid="brand">
+            <Logo size={20} />
+            <span className="brand-name">墨鱼</span>
+          </span>
           <button
             type="button"
             className="icon-btn sidebar-close"
@@ -191,14 +199,30 @@ export function Sidebar({
             <span>深色主题</span>
             <span className="toggle-pill">{theme === "dark" ? "开" : "关"}</span>
           </button>
-          <button
-            type="button"
-            className="sidebar-toggle-row"
-            data-testid="logout-button"
-            onClick={onLogout}
-          >
-            <span>退出登录</span>
-          </button>
+          {currentUser.is_admin && (
+            <button
+              type="button"
+              className="sidebar-toggle-row"
+              data-testid="user-admin-entry"
+              onClick={onOpenUserAdmin}
+            >
+              <span>用户管理</span>
+            </button>
+          )}
+          <div className="sidebar-user" data-testid="sidebar-user">
+            <span className="user-name">
+              {currentUser.username}
+              {currentUser.is_admin && <span className="tag">管理员</span>}
+            </span>
+            <button
+              type="button"
+              className="link-btn"
+              data-testid="logout-button"
+              onClick={onLogout}
+            >
+              退出登录
+            </button>
+          </div>
         </div>
       </aside>
     </>
