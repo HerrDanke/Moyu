@@ -111,6 +111,7 @@ E2E_BASE_URL=http://127.0.0.1:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> \
 
 - E2E **串行执行**（`workers: 1`）：目标环境常是单核自托管机器，并行 worker 会把后端压到超时，产生与代码无关的偶发失败。
 - `e2e/_*.spec.ts` 是**一次性工具/诊断脚本**的约定前缀，已被 `testIgnore` 排除，不参与正式回归。
+- **别直接对已在用的实例跑全量 E2E**：它会导入测试书、创建测试账号并改动当前用户的设置。先取快照、跑完再还原，步骤见 [docs/HANDOFF.md](docs/HANDOFF.md) 的「快速验证」。
 
 ## 环境变量
 
@@ -124,6 +125,7 @@ E2E_BASE_URL=http://127.0.0.1:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> \
 | `NOVEL_DIR` | ./novels | 导入原文备份目录 |
 | `STATIC_DIR` | ./frontend/dist | 前端产物目录 |
 | `TYPING_SPEED` | 1.0 | 生成节奏的**服务端默认值**；用户在设置面板里调过之后以用户设置为准 |
+| `MAX_UPLOAD_BYTES` | 104857600 | 单次导入的 TXT 体积上限（100 MB），超出即拒绝 |
 
 **账号不从环境变量配置**：首次启动时若库中无任何用户，服务端日志会打印一次性**引导口令**，
 用它在网页上创建第一个管理员。此后账号由管理员在「用户管理」里维护。
@@ -152,6 +154,9 @@ docker-compose.yml      单容器 + 两个数据卷
 openspec/               规格驱动开发（specs 为当前事实源，changes/archive 为历史变更）
 docs/HANDOFF.md         交接文档：产物索引、不可破坏的约定、下一步建议
 ```
+
+> 打算改这个项目？先读 **[docs/HANDOFF.md](docs/HANDOFF.md)** —— 里面记着 16 条「不可破坏的约定」
+> （每条都对应一个踩过的坑）、已知风险与下一步建议。
 
 ## 设计说明
 

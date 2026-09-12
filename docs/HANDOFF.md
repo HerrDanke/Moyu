@@ -15,7 +15,7 @@
 | **系统当前事实源** | `openspec/specs/`（7 个能力：`pseudo-ai-chat` `novel-import` `books` `progress` `auth` `user-admin` `ui-shell`） |
 | 某个功能为什么这么做、当时的取舍 | `openspec/changes/archive/<日期>-<名称>/`（proposal → design → tasks） |
 | 后端结构 | `backend/app/`（`readers/` `router/` `services/`） |
-| 前端结构 | `frontend/src/`（`api/` `hooks/` `components/`） |
+| 前端结构 | `frontend/src/`（`api/` `hooks/` `utils/` `components/`） |
 | 变更历史 | `git log`（不要在本文件重复提交内容） |
 | 远程仓库 | https://github.com/HerrDanke/Moyu |
 
@@ -26,7 +26,7 @@
 以下每条都有测试兜底。改动前先跑测试，改动后确认仍绿。
 
 1. **SQLite 必须 WAL + `busy_timeout=5000` + `foreign_keys=ON`**（`backend/app/db.py`）。否则 SSE 长连接并发读会与进度写入互锁，报 `database is locked`，级联删除也会失效。
-2. **SSE 流式推送期间零数据库访问**：整章正文在推送开始前一次性读入内存（`services/typing_stream.py`），推送阶段只做内存分批 + `asyncio.sleep`。
+2. **SSE 流式推送期间零数据库访问**：整章正文在推送开始前一次性读入内存（查库发生在 `services/chat_engine.py` 的 `build_response`），`services/typing_stream.py` 只负责对已取出的字符串做内存分批 + `asyncio.sleep`，它开头就声明「正文进入本模块前已从 DB 取出」。
 3. **进度推进绝不能被静默丢弃**（`services/store.py: write_progress`）。它会先试条件更新（`WHERE chapter_index = 旧值`）以减少多标签页重复推进，**但未命中时必须退化为无条件写入并记 warning**。同一行还会被前端的偏移上报并发 PATCH，这个"假设过期"的窗口是真实存在的——早期实现返回 False 什么都不写，导致「界面显示第 9 章、进度停在第 2 章，下一次『下一章』跳回第 3 章」。忘记这条会重演该 bug。
 4. **「当前书」与阅读进度都是用户级**：存在 `users.current_book_id` 与 `progress(user_id, book_id)`，**不是**全局 `settings`。凡涉及进度的查询都必须带 `user_id`——特别注意 `store.get_current_book` 的**回退分支**（曾按 `updated_at` 全库排序，会让 B 继承 A 最近读的书）。
 5. **书库共享、进度隔离**：所有登录用户看到同一批书；删除书籍需要管理员，且要清掉**所有**用户在该书上的进度，并用 `clear_current_book_reference` 清掉指向它的 `current_book_id`（该列无外键约束，见 `models.py` 模块说明）。
@@ -60,6 +60,58 @@ cd frontend && E2E_BASE_URL=http://<host>:8000 E2E_USERNAME=admin E2E_PASSWORD=<
 - **E2E 串行**（`playwright.config.ts: workers: 1`）：目标环境是单核容器，并行 worker 会把后端压到超时，产生与代码无关的偶发失败。
 - `e2e/_*.spec.ts` 是**一次性工具/诊断脚本**的约定前缀（截图、探针、图标生成），已被 `testIgnore` 排除，不参与回归。需要重跑时临时改名或去掉该 ignore。
 - E2E 需要一个**已初始化的实例**（库里有账号）。若服务尚未初始化，设置 `E2E_SETUP_CODE` 让它走首次引导。
+- 本套 30 条已在**真实部署实例**（`192.168.178.116`）上跑通，单核约 1.1 分钟。这是发布前的最终口径。
+
+### 别直接对线上实例跑全量 E2E
+
+E2E 会**改动实例数据**。实测的污染范围：
+
+| 影响 | 说明 |
+|---|---|
+| 新增书籍 | 本轮实测 **19 本**测试书留在库里（每个导入类用例 1~2 本，随跑的用例数变化） |
+| 新增账号 | 本轮实测 **3 个** `reader*` 测试账号留在库里 |
+| 改动用户设置 | `settings.spec.ts` 会把 admin 的「思考强度」设置成测试值 |
+| 切走当前书 | 测试导入会 `select` 新书，admin 的「当前书」被改掉 |
+| **不会**发生 | 删除既有书与进度、修改密码（唯一的 `delete` 是断言 403，不会真删） |
+
+所以要么另起一个临时实例跑，要么「取快照 → 跑 → 还原」三步走完：
+
+```bash
+# 1) 取快照。直查容器内 SQLite 最准（不经 API，避免字段猜测）：
+#    users.current_book_id、user_settings.typing_speed、books 的 id 列表、账号名列表
+docker compose exec -T moyu python -c "...sqlite3 /data/moyu.sqlite3..."
+
+# 2) 跑 E2E
+E2E_BASE_URL=http://<host>:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> npx playwright test
+
+# 3) 还原 —— 走 API 而不是直接改库，才能复用应用自身的级联删除与
+#    clear_current_book_reference（见约定 5）
+curl -X DELETE .../api/books/<快照外的 id>        # 级联清掉所有用户在该书上的进度
+curl -X DELETE .../api/users/<非 admin 的 id>
+curl -X POST   .../api/books/<原当前书>/select    # 还原「当前书」
+curl -X PATCH  .../api/settings -d '{"typing_speed": <原值>}'
+```
+
+还原后再**直查一次 SQLite** 核对行数与进度值——API 的成功响应不等于落盘状态正确。
+两个附带提醒：测试会消耗书籍自增 id（下次导入的 id 会往后跳，无功能影响）；临时快照可能含小说正文，**不要**留在服务器或提交进仓库。
+
+## 部署与运维
+
+目标环境 `192.168.178.116`（主机名 `Moyu`，PVE 上的**单核 LXC**），应用目录 `/opt/moyu`，对外 `http://192.168.178.116:8000`。
+本机已配置免密登录（密钥 `~/.ssh/moyu_pve_ed25519`），无需输密码。
+
+```bash
+# 拉取 + 重建 + 重启
+ssh root@192.168.178.116 'cd /opt/moyu && git pull --ff-only && docker compose up -d --build'
+```
+
+- **先确认能快进**：远端 HEAD 必须是本地 HEAD 的祖先（`git merge-base --is-ancestor <远端HEAD> HEAD`）。本仓库是**直接推 `master`** 的工作流，没有 PR 环节。
+- 单核上增量构建约 15~30 秒（前端与依赖层有缓存），首次全量构建要几分钟。
+- **判定部署是否成功，看前端产物哈希**：远端 `/` 引用的 `assets/index-<hash>.js` 必须与本地 `npm run build` 的产出哈希一致。这是「部署的确实是我验证过的那份代码」最直接的证据——曾靠它区分修复版与注入 bug 的版本。
+- `docker compose up -d --build` 的退出码**不**代表服务已就绪，部署脚本应轮询 `/api/auth/status` 返回 200 再判定成功。
+- 数据库在命名卷 `moyu_moyu-data`（容器内 `/data`），原文备份在 `moyu-novels`。`up -d --build` 不重建卷，`down` 也不删卷，所以**账号与阅读进度跨部署持续**。
+- 远端 `.env` 权限 `600`，`SECRET_KEY` 为随机值（沿用默认弱值且库中有账号时会拒绝启动，见约定 7）。
+- 容器以非 root（uid 10001）运行；若改用宿主目录绑定挂载，必须先 `chown -R 10001:10001`，否则因无权写入而启动失败。
 
 ## 已知未完成与风险
 
