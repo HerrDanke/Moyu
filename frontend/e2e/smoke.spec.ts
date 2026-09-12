@@ -57,6 +57,8 @@ test("登录 → 导入小说 → 读下一章", async ({ page }) => {
  * 会在发送流程第一步抛 TypeError，导致请求完全发不出去（界面看似卡住、进度永远 0%）。
  */
 test("非安全上下文（明文 HTTP）下也能正常发送", async ({ page }) => {
+  test.setTimeout(60_000);
+
   // 模拟 non-secure context：删除仅在安全上下文可用的 API
   await page.addInitScript(() => {
     // @ts-expect-error 有意删除以复现明文 HTTP 环境
@@ -77,14 +79,11 @@ test("非安全上下文（明文 HTTP）下也能正常发送", async ({ page }
     await page.getByRole("button", { name: "进入" }).click();
   }
 
-  // 保证有书可选
-  const options = await page.locator(".book-selector select option").count();
-  if (options <= 1) {
-    const tmp = join(tmpdir(), `moyu-e2e-nosecure-${Date.now()}.txt`);
-    writeFileSync(tmp, NOVEL, "utf-8");
-    await page.locator('input[type="file"]').setInputFiles(tmp);
-    await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
-  }
+  // 自包含：导入独立样本，保证章节短、耗时可预期
+  const tmp = join(tmpdir(), `moyu-e2e-nosecure-${Date.now()}.txt`);
+  writeFileSync(tmp, NOVEL, "utf-8");
+  await page.locator('input[type="file"]').setInputFiles(tmp);
+  await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
 
   const input = page.getByPlaceholder(/下一章/);
   await input.fill("下一章");
@@ -94,14 +93,21 @@ test("非安全上下文（明文 HTTP）下也能正常发送", async ({ page }
   await expect(page.locator(".msg.user")).toBeVisible({ timeout: 10_000 });
   expect(chatRequests.length).toBeGreaterThan(0);
   expect(pageErrors.join("")).not.toContain("randomUUID");
+
+  // 等本章流式跑完，避免服务端流跨越到下一个用例造成干扰
+  await expect(page.getByText(/章完/)).toBeVisible({ timeout: 30_000 });
 });
 
 /**
  * 回归测试：进度百分比必须**随阅读自行推进**，无需刷新页面。
  * 旧实现丢弃了 PATCH 的返回值，本地 progress state 从不更新，
  * 结果进度虽已落库、界面却冻结在 0%（只有刷新才显示真实值）。
+ *
+ * 自包含：导入自己的小样本小说再读，避免依赖前序用例的服务端状态。
  */
 test("阅读时百分比自行推进（无需刷新页面）", async ({ page }) => {
+  test.setTimeout(60_000);
+
   await page.goto("/");
   const password = page.locator('input[type="password"]');
   if (await password.count()) {
@@ -109,14 +115,11 @@ test("阅读时百分比自行推进（无需刷新页面）", async ({ page }) 
     await page.getByRole("button", { name: "进入" }).click();
   }
 
-  // 保证有书可选
-  const options = await page.locator(".book-selector select option").count();
-  if (options <= 1) {
-    const tmp = join(tmpdir(), `moyu-e2e-progress-${Date.now()}.txt`);
-    writeFileSync(tmp, NOVEL, "utf-8");
-    await page.locator('input[type="file"]').setInputFiles(tmp);
-    await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
-  }
+  // 导入独立样本并自动成为当前书
+  const tmp = join(tmpdir(), `moyu-e2e-progress-${Date.now()}.txt`);
+  writeFileSync(tmp, NOVEL, "utf-8");
+  await page.locator('input[type="file"]').setInputFiles(tmp);
+  await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
 
   const header = page.locator(".chapter-progress");
   const percent = async () => {
@@ -125,15 +128,14 @@ test("阅读时百分比自行推进（无需刷新页面）", async ({ page }) 
     return matched ? Number(matched[1]) : -1;
   };
 
-  // 先跳到第 1 章，把偏移归零，便于观察从 0 开始上涨
   const input = page.getByPlaceholder(/下一章/);
-  await input.fill("第 1 章");
+  await input.fill("下一章");
   await input.press("Enter");
-  await page.waitForTimeout(3000);
 
+  // 百分比应在打字机推进过程中自行上涨，而不是停在 0%
   await expect
     .poll(percent, {
-      timeout: 40_000,
+      timeout: 30_000,
       message: "百分比应随打字机进度自行上涨，而不是停在 0%",
     })
     .toBeGreaterThan(0);
