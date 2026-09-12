@@ -19,7 +19,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 COOKIE_NAME = "moyu_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 天
 
-PASSWORD_MIN_LENGTH = 8
+PASSWORD_MIN_LENGTH = 4
 PASSWORD_MAX_LENGTH = 512
 USERNAME_MIN_LENGTH = 3
 USERNAME_MAX_LENGTH = 32

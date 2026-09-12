@@ -47,7 +47,7 @@ def test_create_user_validation(client):
         "/api/users", json={"username": "has space", "password": "password-123"}
     ).status_code == 400
     assert client.post(
-        "/api/users", json={"username": "okname", "password": "short"}
+        "/api/users", json={"username": "okname", "password": "abc"}
     ).status_code == 400
 
 

@@ -42,7 +42,7 @@ export function SetupPage({ onSubmit, error }: Props) {
           data-testid="setup-password"
           type="password"
           value={password}
-          placeholder="密码（至少 8 位）"
+          placeholder="密码（至少 4 位）"
           autoComplete="new-password"
           onChange={(e) => setPassword(e.target.value)}
         />

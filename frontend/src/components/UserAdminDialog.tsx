@@ -79,7 +79,7 @@ export function UserAdminDialog({ currentUser, onClose }: Props) {
     });
 
   const resetPassword = (u: User) => {
-    const pwd = window.prompt(`为「${u.username}」设置新密码（至少 8 位）`);
+    const pwd = window.prompt(`为「${u.username}」设置新密码（至少 4 位）`);
     if (!pwd) return;
     void run(() => api.updateUser(u.id, { password: pwd }));
   };
@@ -178,7 +178,7 @@ export function UserAdminDialog({ currentUser, onClose }: Props) {
             <input
               data-testid="new-user-password"
               type="password"
-              placeholder="密码（≥8 位）"
+              placeholder="密码（≥4 位）"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
             />

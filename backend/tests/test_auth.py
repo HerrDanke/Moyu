@@ -97,7 +97,7 @@ def test_setup_flow(tmp_path):
 
     short = client.post(
         "/api/auth/setup",
-        json={"username": "boss", "password": "short", "setup_code": code},
+        json={"username": "boss", "password": "abc", "setup_code": code},
     )
     assert short.status_code == 400
 

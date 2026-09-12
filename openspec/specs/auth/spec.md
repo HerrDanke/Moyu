@@ -96,5 +96,6 @@ TBD - created by archiving change mvp-moyu. Update Purpose after archive.
 - Then 既有书籍与其阅读进度归属该管理员，原「当前书」成为该用户的当前书
 
 #### Scenario: 密码强度下限
-- When 提交的新密码短于 8 位
+- When 提交的新密码短于 4 位
 - Then 拒绝创建并提示密码长度要求
+（说明：自托管单机场景下有意放宽到 4 位，便于使用短口令；请配合网络隔离与 HTTPS 使用。）
