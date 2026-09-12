@@ -121,11 +121,12 @@ test.describe("阅读快捷工具条与章节目录", () => {
     const drawer = page.locator('[data-testid="toc-drawer"]');
     await expect(drawer).toBeVisible();
 
-    await drawer.locator('[data-testid="toc-search"]').fill("标题8");
-    // 只剩标题8（以及标题18/28/38 也会命中「标题8」子串）
-    await expect(drawer.locator('[data-testid="toc-item-8"]')).toBeVisible();
-    await expect(drawer.locator('[data-testid="toc-item-7"]')).toHaveCount(0);
+    await drawer.locator('[data-testid="toc-search"]').fill("标题18");
+    await expect(drawer.locator('[data-testid="toc-item-18"]')).toBeVisible();
+    await expect(drawer.locator('[data-testid="toc-item-8"]')).toHaveCount(0);
 
+    // 关键：过滤后第 18 章是结果里的第 1 项。
+    // 若实现误用「过滤结果的位次」而不是真实章号，这里就会跳到第 1 章。
     await drawer.locator('[data-testid="toc-item-18"]').click();
     await expect(page.locator('[data-testid="message-user"]').last()).toContainText("第 18 章");
   });
