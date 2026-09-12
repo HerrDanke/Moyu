@@ -2,7 +2,7 @@ import { useEffect, type RefObject } from "react";
 
 interface Props {
   streaming: boolean;
-  /** 草稿状态提升到 App：手输与「跳转章节」的预填共用同一份真相 */
+  /** 输入框草稿（由 App 受控持有） */
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: (text: string) => void;

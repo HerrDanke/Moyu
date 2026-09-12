@@ -34,12 +34,13 @@
 7. **存在任意用户时，弱/空 `SECRET_KEY` 必须拒绝启动**（`main.py: assert_secure_secret`）。守卫条件已与账号体系绑定——**不要**再依赖 `ACCESS_PASSWORD`（该变量已退役，沿用旧条件会恒为假，从而允许用公开常量自签 Cookie 绕过鉴权）。
 8. **未初始化期间不得暴露数据**：库中无任何用户时，除 `/api/auth/login|status|setup` 外全部 `/api/*` 返回 401（`deps.require_session` 自然满足，因为拿不到合法会话）。
 9. **思考强度同时作用于两端**：服务端分批间隔（`typing_speed`）**与**前端打字机速率（`MessageList` 按倍率缩放 `charsPerTick`）。只调服务端没用——打字机本身有 125 字/秒的硬下限，长章节会被它拖住。档位定义是**服务端唯一事实源**（`services/user_settings.py`），前端从 `GET /api/settings` 读回，不要在前端再抄一份。
-10. **续读偏移只按章节正文计**：服务端通过 `meta` 事件给出 `start_offset` / `char_count`，前端必须剔除标题与收尾文案后再计算偏移；且**只允许当前活跃消息上报**（旧章节滞留的打字机会污染新章节的偏移）。
-11. **流式断句必须能原样拼回**：`typing_stream.split_sentences` 只丢弃真正的空串，**不能**用 `p.strip()` 过滤——`re.split` 会把「只含换行」的片段单独切出来，strip 后判空即被丢弃，段落分隔会在流式阶段被抹掉（长章节糊成一坨）。
-12. **指令解析正则必须保持线性**（禁止嵌套量词）+ 输入截断 500 字符（防 ReDoS）；**SQL 必须参数化**，LIKE 关键词必须转义 `%` `_`（`services/chat_engine.py: escape_like`）。
-13. **静态资源挂载必须晚于 `/api` 路由注册**；未注册的 `/api/*` 必须返回 404，不能回退成 `index.html`（`main.py: SPAStaticFiles`）。
-14. TXT 编码探测顺序固定为 BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。许多 GBK 双字节序列恰好是合法 UTF-8，**不要改成 charset-normalizer 优先**。
-15. **主题与阅读宽度必须留在 localStorage**：首屏防闪烁依赖 CSS 之前的内联脚本直接读 `localStorage`，改成等接口返回必然闪一下。这是有意取舍，不是遗漏。
+10. **不要把「会读 state 的处理函数」用 `useCallback(..., [])` 包起来**。`App.tsx` 的 `handleSend` 会读 `quickRead`；一旦某个入口（如目录点章）把它记忆化且依赖数组为空，那个入口就永久闭包住首帧的 `handleSend`，其中 `quickRead` 恒为 `false`——「快速阅读」在该路径上静默失效，且只在**点目录**时出现、点「下一章」正常，极难排查。`ChapterDrawer` 没有 `React.memo`，这类记忆化本来就零收益。已有 E2E 护栏（断言请求体 `quick_read`，见 `e2e/chapter-nav.spec.ts`）。
+11. **续读偏移只按章节正文计**：服务端通过 `meta` 事件给出 `start_offset` / `char_count`，前端必须剔除标题与收尾文案后再计算偏移；且**只允许当前活跃消息上报**（旧章节滞留的打字机会污染新章节的偏移）。
+12. **流式断句必须能原样拼回**：`typing_stream.split_sentences` 只丢弃真正的空串，**不能**用 `p.strip()` 过滤——`re.split` 会把「只含换行」的片段单独切出来，strip 后判空即被丢弃，段落分隔会在流式阶段被抹掉（长章节糊成一坨）。
+13. **指令解析正则必须保持线性**（禁止嵌套量词）+ 输入截断 500 字符（防 ReDoS）；**SQL 必须参数化**，LIKE 关键词必须转义 `%` `_`（`services/chat_engine.py: escape_like`）。
+14. **静态资源挂载必须晚于 `/api` 路由注册**；未注册的 `/api/*` 必须返回 404，不能回退成 `index.html`（`main.py: SPAStaticFiles`）。
+15. TXT 编码探测顺序固定为 BOM → UTF-8 严格 → GB18030 严格 → charset-normalizer 兜底。许多 GBK 双字节序列恰好是合法 UTF-8，**不要改成 charset-normalizer 优先**。
+16. **主题与阅读宽度必须留在 localStorage**：首屏防闪烁依赖 CSS 之前的内联脚本直接读 `localStorage`，改成等接口返回必然闪一下。这是有意取舍，不是遗漏。
 
 ## 快速验证
 
@@ -52,7 +53,7 @@ cd backend && .venv/Scripts/python.exe -m pytest -q
 # 前端单元测试 + 生产构建（7 passed + 构建成功为基线）
 cd frontend && npm run test && npm run build
 
-# 真实浏览器端到端（29 passed 为基线；需先 npx playwright install chromium）
+# 真实浏览器端到端（30 passed 为基线；需先 npx playwright install chromium）
 cd frontend && E2E_BASE_URL=http://<host>:8000 E2E_USERNAME=admin E2E_PASSWORD=<密码> npx playwright test
 ```
 

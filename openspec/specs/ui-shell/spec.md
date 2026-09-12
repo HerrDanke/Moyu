@@ -26,7 +26,8 @@ TBD - created by archiving change chatgpt-ui. Update Purpose after archive.
 
 #### Scenario: 空状态
 - Given 已选定一本书但消息区为空（首次打开或刚切过书）
-- Then 内容区居中显示：当前书名与进度、以及可点击的示例指令（如「下一章」「上一章」「跳到第 12 章」）
+- Then 内容区居中显示当前书名与阅读进度，以及一句引导文案（提示用下方按钮或直接打字）
+- Then 不出现可点击的示例指令按钮（它们与工具条重复，见「空状态精简」）
 - Then 不出现「你好，我是你的阅读助手」这类无信息量的问候语
 
 #### Scenario: 底部悬浮输入框
@@ -179,7 +180,7 @@ TBD - created by archiving change chatgpt-ui. Update Purpose after archive.
 ### Requirement: 阅读快捷工具条
 **ID:** ui-shell.reading-toolbar
 
-在输入框上方提供一行常驻快捷按钮，把最高频的几个动作变成可点控件；跳转类操作复用既有指令，不新增后端能力。
+在输入框上方提供一行常驻快捷按钮，把最高频的几个动作变成可点控件；按钮只承担翻页与打开目录，跳章统一由「目录」或手输指令完成，不新增后端能力。
 
 #### Scenario: 下一章 / 上一章
 - Given 我已选定一本书
@@ -191,14 +192,12 @@ TBD - created by archiving change chatgpt-ui. Update Purpose after archive.
 #### Scenario: 生成中禁用发送类按钮
 - Given 正在进行流式生成
 - Then 「下一章」「上一章」不可点击，与输入框的禁用状态一致
-- Then 「目录」「跳转章节」仍可用（它们不发起请求）
+- Then 「目录」仍可用（它不发起请求）
 
-#### Scenario: 跳转章节预填输入框
-- When 点击「跳转章节」
-- Then 输入框被预填为「第 」并获得焦点，光标位于末尾
-- Then 不发起任何请求
-- When 用户补全数字并回车
-- Then 跳到对应章节（复用既有的跳转指令）
+#### Scenario: 不设独立的跳章按钮
+- Given 工具条已渲染
+- Then 工具条恰好包含「上一章」「下一章」「目录」三个按钮
+- Then 不存在「预填输入框」形态的跳章按钮（跳章统一走「目录」的搜索与点选，或直接在输入框手输「第 N 章」）
 
 #### Scenario: 窄屏下不破版
 - Given 视口宽度小于 768px

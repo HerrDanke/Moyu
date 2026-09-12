@@ -63,7 +63,8 @@ export default function App() {
   const [quickRead, setQuickRead] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
-  // 草稿提升到这里：手输与「跳转章节」的预填共用同一份真相
+  // 输入框草稿（受控组件）。放在 App 而不是收进 Composer 内部，是为了保留
+  // 「从外部预填 / 清空草稿」这条能力——历史上「跳转章节」按钮就走过它。
   const [draft, setDraft] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [theme, setTheme] = useState<Theme>(
@@ -386,28 +387,17 @@ export default function App() {
     setMessages((m) => m.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
   };
 
-  /** 「跳转章节」：预填输入框并聚焦，不发请求 —— 复用既有的「第 N 章」指令。 */
-  const handleJump = useCallback(() => {
-    setDraft("第 ");
-    requestAnimationFrame(() => {
-      const el = composerRef.current;
-      if (!el) return;
-      el.focus();
-      const len = el.value.length;
-      el.setSelectionRange(len, len);
-    });
-  }, []);
-
-  /** 目录里点某一章：走既有指令，进度与流式输出都由原逻辑负责。 */
-  const handlePickChapter = useCallback(
-    (chapterIndex: number) => {
-      setTocOpen(false);
-      void handleSend(`第 ${chapterIndex} 章`);
-    },
-    // handleSend 每次渲染都会重建，这里用 ref 之外的简单方式：允许依赖它
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  /**
+   * 目录里点某一章：走既有指令，进度与流式输出都由原逻辑负责。
+   *
+   * 刻意**不做** `useCallback`：`ChapterDrawer` 没有 memo，记忆化没有任何收益，
+   * 而写成 `useCallback(..., [])` 会让这里永久闭包住首帧的 `handleSend`——
+   * 那一份里的 `quickRead` 恒为 `false`，于是「快速阅读」在目录跳章这条路径上失效。
+   */
+  const handlePickChapter = (chapterIndex: number) => {
+    setTocOpen(false);
+    void handleSend(`第 ${chapterIndex} 章`);
+  };
 
   /** 上报续读偏移：只按章节正文字符数计算，并把服务端返回的进度回写本地。 */
   const handleProgressReport = useCallback((messageId: string, revealed: number) => {
@@ -552,7 +542,6 @@ export default function App() {
             sendingDisabled={streaming}
             onSend={handleSend}
             onOpenToc={() => setTocOpen(true)}
-            onJump={handleJump}
           />
           <Composer
             streaming={streaming}
