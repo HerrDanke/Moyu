@@ -50,3 +50,48 @@ test("登录 → 导入小说 → 读下一章", async ({ page }) => {
 
   expect(chatStatuses).toContain(200);
 });
+
+/**
+ * 回归测试：自托管常用 http://<局域网IP> 访问，那是**非安全上下文**，
+ * `crypto.randomUUID` 不存在。旧实现把它当作消息 ID 生成器直接调用，
+ * 会在发送流程第一步抛 TypeError，导致请求完全发不出去（界面看似卡住、进度永远 0%）。
+ */
+test("非安全上下文（明文 HTTP）下也能正常发送", async ({ page }) => {
+  // 模拟 non-secure context：删除仅在安全上下文可用的 API
+  await page.addInitScript(() => {
+    // @ts-expect-error 有意删除以复现明文 HTTP 环境
+    delete (globalThis.crypto as Crypto).randomUUID;
+  });
+
+  const chatRequests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/chat")) chatRequests.push(r.url());
+  });
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+
+  await page.goto("/");
+  const password = page.locator('input[type="password"]');
+  if (await password.count()) {
+    await password.fill(process.env.E2E_PASSWORD ?? "changeme");
+    await page.getByRole("button", { name: "进入" }).click();
+  }
+
+  // 保证有书可选
+  const options = await page.locator(".book-selector select option").count();
+  if (options <= 1) {
+    const tmp = join(tmpdir(), `moyu-e2e-nosecure-${Date.now()}.txt`);
+    writeFileSync(tmp, NOVEL, "utf-8");
+    await page.locator('input[type="file"]').setInputFiles(tmp);
+    await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
+  }
+
+  const input = page.getByPlaceholder(/下一章/);
+  await input.fill("下一章");
+  await input.press("Enter");
+
+  // 用户气泡必须出现，且真的发出了 /api/chat
+  await expect(page.locator(".msg.user")).toBeVisible({ timeout: 10_000 });
+  expect(chatRequests.length).toBeGreaterThan(0);
+  expect(pageErrors.join("")).not.toContain("randomUUID");
+});

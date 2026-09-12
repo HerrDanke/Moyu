@@ -14,6 +14,7 @@ import {
   streamChat,
 } from "./api/client";
 import type { Book, ChapterMeta, ChatMessage, Progress } from "./types";
+import { newId } from "./utils/id";
 import { MessageList } from "./components/MessageList";
 import { ChatInput } from "./components/ChatInput";
 import { BookSelector } from "./components/BookSelector";
@@ -138,7 +139,7 @@ export default function App() {
       chooseBook(res.book_id);
       setMessages([
         {
-          id: crypto.randomUUID(),
+          id: newId(),
           role: "assistant",
           text: `已导入《${res.title}》，共 ${res.total_chapters} 章。${
             res.notice ? res.notice + "。" : ""
@@ -149,7 +150,7 @@ export default function App() {
       setMessages((m) => [
         ...m,
         {
-          id: crypto.randomUUID(),
+          id: newId(),
           role: "assistant",
           text: `导入失败：${e instanceof Error ? e.message : "未知错误"}`,
         },
@@ -173,8 +174,8 @@ export default function App() {
   };
 
   const handleSend = async (text: string) => {
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text };
-    const asstId = crypto.randomUUID();
+    const userMsg: ChatMessage = { id: newId(), role: "user", text };
+    const asstId = newId();
     const asstMsg: ChatMessage = { id: asstId, role: "assistant", text: "", streaming: true };
     setMessages((m) => [...m, userMsg, asstMsg]);
     setStreaming(true);
