@@ -106,6 +106,7 @@ test.describe("账号与用户管理", () => {
   test("退出登录回到登录页", async ({ page }) => {
     test.setTimeout(60_000);
     await login(page);
+    await page.locator('[data-testid="settings-button"]').click();
     await page.locator('[data-testid="logout-button"]').click();
     await expect(page.locator('[data-testid="login-username"]')).toBeVisible({ timeout: 10_000 });
     await page.locator('[data-testid="login-username"]').fill(ADMIN_USERNAME);

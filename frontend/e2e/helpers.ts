@@ -64,6 +64,49 @@ export async function createUserViaUi(
   await expect(page.locator('[data-testid="user-admin-dialog"]')).toBeHidden();
 }
 
+/** 打开设置面板（主题/阅读宽度/快速阅读/退出登录 现在都在里面）。 */
+export async function openSettings(page: Page) {
+  await page.locator('[data-testid="settings-button"]').click();
+  await expect(page.locator('[data-testid="settings-dialog"]')).toBeVisible();
+}
+
+/** 设置「思考强度」档位（1 迅捷 / 2 标准 / 3 深入 / 4 沉思），并等保存完成。 */
+export async function setThinkingLevel(page: Page, level: number) {
+  await openSettings(page);
+  const slider = page.locator('[data-testid="thinking-slider"]');
+  await slider.fill(String(level));
+  await expect(page.locator('[data-testid="thinking-label"]')).not.toHaveText("—");
+  await page.locator('[data-testid="settings-close"]').click();
+  await expect(page.locator('[data-testid="settings-dialog"]')).toBeHidden();
+}
+
+/**
+ * 导入一本「节奏可测」的书：每章 8 句，便于用「收尾出现耗时」观测生成速度。
+ */
+export async function importPacedNovel(page: Page, tag = "paced") {
+  const sentences = (n: number) =>
+    Array.from({ length: n }, (_, i) => `这是第 ${i + 1} 句正文，用来观测出字节奏。`).join("\n");
+  const text = [
+    `第1章 节奏一\n${sentences(8)}`,
+    `第2章 节奏二\n${sentences(8)}`,
+    `第3章 节奏三\n${sentences(8)}`,
+  ].join("\n\n");
+  const tmp = join(tmpdir(), `moyu-${tag}-${Date.now()}.txt`);
+  writeFileSync(tmp, text, "utf-8");
+  await page.locator('[data-testid="import-input"]').setInputFiles(tmp);
+  await expect(page.getByText(/共 3 章/)).toBeVisible({ timeout: 15_000 });
+}
+
+/** 发一条指令并返回「从发送到收尾文案出现」的毫秒数。 */
+export async function measureStreamMs(page: Page, command: string) {
+  const t0 = Date.now();
+  const input = page.locator('[data-testid="composer-input"]');
+  await input.fill(command);
+  await input.press("Enter");
+  await expect(page.locator('[data-testid="stop-button"]')).toBeHidden({ timeout: 120_000 });
+  return Date.now() - t0;
+}
+
 export async function importNovel(page: Page, tag = "e2e") {
   const tmp = join(tmpdir(), `moyu-${tag}-${Date.now()}.txt`);
   writeFileSync(tmp, NOVEL, "utf-8");

@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..models import Book, Progress, Setting, User
+from ..models import Book, Progress, Setting, User, UserSetting
 
 logger = logging.getLogger("moyu.store")
 
@@ -148,3 +148,17 @@ def clear_current_book_reference(session: Session, book_id: int) -> None:
     session.execute(
         update(User).where(User.current_book_id == book_id).values(current_book_id=None)
     )
+
+
+def get_user_setting(session: Session, user_id: int, key: str) -> str | None:
+    row = session.get(UserSetting, (user_id, key))
+    return row.value if row is not None else None
+
+
+def set_user_setting(session: Session, user_id: int, key: str, value: str) -> None:
+    row = session.get(UserSetting, (user_id, key))
+    if row is None:
+        session.add(UserSetting(user_id=user_id, key=key, value=value))
+    else:
+        row.value = value
+    session.commit()

@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   AuthStatus,
   Book,
   ChapterMeta,
@@ -111,6 +112,23 @@ export async function updateUser(
 
 export async function deleteUser(userId: number): Promise<void> {
   await handle(await fetch(`${BASE}/api/users/${userId}`, { method: "DELETE" }));
+}
+
+// --------------------------------------------------------------------------
+// 每用户设置（思考强度）
+// --------------------------------------------------------------------------
+export async function getSettings(): Promise<AppSettings> {
+  return handle(await fetch(`${BASE}/api/settings`));
+}
+
+export async function patchSettings(typingSpeed: number): Promise<AppSettings> {
+  return handle(
+    await fetch(`${BASE}/api/settings`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ typing_speed: typingSpeed }),
+    }),
+  );
 }
 
 export async function logout(): Promise<void> {

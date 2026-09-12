@@ -10,7 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import INSECURE_SECRETS, Settings, get_settings
 from .db import count_users, create_engine_for, create_session_factory, init_db
-from .router import auth, books, chat, progress, search, users
+from .router import auth, books, chat, progress, search, settings as settings_router, users
 from .security import generate_setup_code, set_setup_code
 
 logger = logging.getLogger("moyu")
@@ -96,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # 1) 先注册所有 /api/* 路由
     app.include_router(auth.router)
     app.include_router(users.router)
+    app.include_router(settings_router.router)
     app.include_router(books.router)
     app.include_router(progress.router)
     app.include_router(search.router)

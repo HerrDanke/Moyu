@@ -12,6 +12,21 @@ export interface AuthStatus {
   user: User | null;
 }
 
+export interface ThinkingLevelOption {
+  level: number;
+  name: string;
+  speed: number;
+  hint: string;
+}
+
+/** 服务端返回的每用户设置（「思考强度」档位映射由服务端提供，前端不硬编码） */
+export interface AppSettings {
+  typing_speed: number;
+  thinking_level: number | null;
+  levels: ThinkingLevelOption[];
+  typing_speed_from_user: boolean;
+}
+
 export interface Book {
   id: number;
   title: string;

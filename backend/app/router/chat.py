@@ -17,6 +17,7 @@ from ..schemas import ChatRequest
 from ..services import store
 from ..services.chat_engine import build_response
 from ..services.typing_stream import stream_headers, stream_response
+from ..services.user_settings import with_user_pacing
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -32,6 +33,8 @@ async def chat(
     user: User = Depends(require_session),
 ):
     response = build_response(session, settings, payload.message, user)
+    # 用当前用户的「思考强度」覆盖本次请求的节奏（未设置过则回落到环境变量默认值）
+    effective = with_user_pacing(settings, session, user)
     user_id = user.id
     book_id = response.progress_book_id
     chapter_index = response.progress_chapter_index
@@ -42,7 +45,7 @@ async def chat(
     session_factory = request.app.state.session_factory
 
     async def event_generator():
-        async for chunk in stream_response(response, settings, quick_read=payload.quick_read):
+        async for chunk in stream_response(response, effective, quick_read=payload.quick_read):
             yield chunk
         # 流式正常结束后才推进进度。
         # 注意：这里不能静默吞异常——进度写失败会导致「界面在第 9 章、进度还在第 2 章」，

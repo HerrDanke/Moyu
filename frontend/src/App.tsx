@@ -4,17 +4,20 @@ import {
   getAuthStatus,
   getChapters,
   getProgress,
+  getSettings,
   importBook,
   listBooks,
   login,
   logout,
   onUnauthorized,
   patchProgress,
+  patchSettings,
   selectBook,
   setup as setupAccount,
   streamChat,
 } from "./api/client";
 import type {
+  AppSettings,
   Book,
   ChapterMeta,
   ChatMessage,
@@ -31,6 +34,7 @@ import { Sidebar } from "./components/Sidebar";
 import { EmptyState } from "./components/EmptyState";
 import { LoginPage } from "./components/LoginPage";
 import { SetupPage } from "./components/SetupPage";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { UserAdminDialog } from "./components/UserAdminDialog";
 import { newId } from "./utils/id";
 import { formatProgressLabel } from "./utils/progress";
@@ -45,6 +49,9 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>("checking");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userAdminOpen, setUserAdminOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -108,6 +115,11 @@ export default function App() {
         if (s.authenticated && s.user) {
           setCurrentUser(s.user);
           setAuth("ok");
+          try {
+            setAppSettings(await getSettings());
+          } catch {
+            /* 设置拉取失败不阻塞进入 */
+          }
         } else {
           setAuth("login");
         }
@@ -166,10 +178,32 @@ export default function App() {
       const user = await login(username, password);
       setCurrentUser(user);
       setAuth("ok");
+      try {
+        setAppSettings(await getSettings());
+      } catch {
+        /* ignore */
+      }
     } catch (e) {
       setLoginError(e instanceof Error ? e.message : "登录失败");
     }
   };
+
+  /** 选择「思考强度」档位：把服务端给的档位速度发回去，立即用于下一次阅读。 */
+  const handleSelectLevel = useCallback(
+    async (level: number) => {
+      const option = appSettings?.levels.find((l) => l.level === level);
+      if (!option) return;
+      setSavingSettings(true);
+      try {
+        setAppSettings(await patchSettings(option.speed));
+      } catch {
+        /* 失败就保留原值 */
+      } finally {
+        setSavingSettings(false);
+      }
+    },
+    [appSettings],
+  );
 
   const handleSetup = async (username: string, password: string, setupCode: string) => {
     setLoginError(null);
@@ -187,6 +221,8 @@ export default function App() {
     setCurrentUser(null);
     setAuth("login");
     setMessages([]);
+    setSettingsOpen(false);
+    setUserAdminOpen(false);
   };
 
   /** 切书 = 开新会话：清空消息区并进入该书的空状态。 */
@@ -442,20 +478,33 @@ export default function App() {
         onDelete={handleDelete}
         busy={busy}
         progressLabel={progressLabel}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        quickRead={quickRead}
-        onToggleQuickRead={() => setQuickRead((q) => !q)}
-        readingMode={readingMode}
-        onToggleReadingMode={() =>
-          setReadingMode((m) => (m === "wide" ? "compact" : "wide"))
-        }
-        onLogout={handleLogout}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         currentUser={currentUser}
         onOpenUserAdmin={() => setUserAdminOpen(true)}
+        onOpenSettings={() => {
+          setSidebarOpen(false);
+          setSettingsOpen(true);
+        }}
       />
+
+      {settingsOpen && (
+        <SettingsDialog
+          onClose={() => setSettingsOpen(false)}
+          theme={theme}
+          onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          readingMode={readingMode}
+          onToggleReadingMode={() =>
+            setReadingMode((m) => (m === "wide" ? "compact" : "wide"))
+          }
+          quickRead={quickRead}
+          onToggleQuickRead={() => setQuickRead((q) => !q)}
+          onLogout={handleLogout}
+          settings={appSettings}
+          onSelectLevel={handleSelectLevel}
+          saving={savingSettings}
+        />
+      )}
 
       {userAdminOpen && currentUser.is_admin && (
         <UserAdminDialog

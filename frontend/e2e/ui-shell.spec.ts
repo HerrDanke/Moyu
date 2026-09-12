@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { importNovel, login } from "./helpers";
+import { importNovel, login, openSettings } from "./helpers";
 
 test.describe("ChatGPT 式外壳", () => {
   test("空状态：显示书名与进度，点示例指令即开始阅读", async ({ page }) => {
@@ -77,6 +77,7 @@ test.describe("ChatGPT 式外壳", () => {
     await login(page);
 
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await openSettings(page);
     await page.locator('[data-testid="theme-toggle"]').click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
@@ -89,6 +90,7 @@ test.describe("ChatGPT 式外壳", () => {
     await login(page);
 
     await expect(page.locator("html")).toHaveAttribute("data-reading", "wide");
+    await openSettings(page);
     await page.locator('[data-testid="reading-mode-toggle"]').click();
     await expect(page.locator("html")).toHaveAttribute("data-reading", "compact");
 

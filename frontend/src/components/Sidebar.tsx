@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Book, ReadingMode, Theme, User } from "../types";
+import type { Book, User } from "../types";
 import { Logo } from "./Logo";
 
 interface Props {
@@ -13,17 +13,11 @@ interface Props {
   busy?: boolean;
   /** 当前书进度文案，如「第 1 / 1807 章 · 本章 42%」 */
   progressLabel: string | null;
-  theme: Theme;
-  onToggleTheme: () => void;
-  quickRead: boolean;
-  onToggleQuickRead: () => void;
-  readingMode: ReadingMode;
-  onToggleReadingMode: () => void;
-  onLogout: () => void;
   open: boolean;
   onClose: () => void;
   currentUser: User;
   onOpenUserAdmin: () => void;
+  onOpenSettings: () => void;
 }
 
 export function Sidebar({
@@ -35,17 +29,11 @@ export function Sidebar({
   onDelete,
   busy,
   progressLabel,
-  theme,
-  onToggleTheme,
-  quickRead,
-  onToggleQuickRead,
-  readingMode,
-  onToggleReadingMode,
-  onLogout,
   open,
   onClose,
   currentUser,
   onOpenUserAdmin,
+  onOpenSettings,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -172,32 +160,11 @@ export function Sidebar({
           <button
             type="button"
             className="sidebar-toggle-row"
-            data-testid="reading-mode-toggle"
-            aria-pressed={readingMode === "wide"}
-            onClick={onToggleReadingMode}
+            data-testid="settings-button"
+            onClick={onOpenSettings}
           >
-            <span>宽松排版</span>
-            <span className="toggle-pill">{readingMode === "wide" ? "开" : "关"}</span>
-          </button>
-          <button
-            type="button"
-            className="sidebar-toggle-row"
-            data-testid="quick-read-toggle"
-            aria-pressed={quickRead}
-            onClick={onToggleQuickRead}
-          >
-            <span>快速阅读</span>
-            <span className="toggle-pill">{quickRead ? "开" : "关"}</span>
-          </button>
-          <button
-            type="button"
-            className="sidebar-toggle-row"
-            data-testid="theme-toggle"
-            aria-pressed={theme === "dark"}
-            onClick={onToggleTheme}
-          >
-            <span>深色主题</span>
-            <span className="toggle-pill">{theme === "dark" ? "开" : "关"}</span>
+            <span>设置</span>
+            <span className="toggle-pill">⚙</span>
           </button>
           {currentUser.is_admin && (
             <button
@@ -214,14 +181,6 @@ export function Sidebar({
               {currentUser.username}
               {currentUser.is_admin && <span className="tag">管理员</span>}
             </span>
-            <button
-              type="button"
-              className="link-btn"
-              data-testid="logout-button"
-              onClick={onLogout}
-            >
-              退出登录
-            </button>
           </div>
         </div>
       </aside>
