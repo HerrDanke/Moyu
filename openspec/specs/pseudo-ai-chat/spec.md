@@ -1,7 +1,7 @@
 # pseudo-ai-chat Specification
 
 ## Purpose
-TBD - created by archiving change mvp-moyu. Update Purpose after archive.
+用本地文案模板 + SSE 分批节流伪造「大模型流式生成」的观感，把阅读包装成一段对话——全程不调用任何外部 AI 服务。
 
 ## Requirements
 

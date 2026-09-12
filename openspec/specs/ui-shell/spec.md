@@ -1,7 +1,7 @@
 # ui-shell Specification
 
 ## Purpose
-TBD - created by archiving change chatgpt-ui. Update Purpose after archive.
+对话式阅读界面的外壳：ChatGPT 式布局与切会话语义、阅读排版与主题、无障碍、品牌标识，以及阅读工具条、章节目录、设置面板与思考强度。
 
 ## Requirements
 

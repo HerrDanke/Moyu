@@ -1,7 +1,7 @@
 # books Specification
 
 ## Purpose
-TBD - created by archiving change mvp-moyu. Update Purpose after archive.
+书库：列出与选择书籍、按章节标题搜索，以及（仅管理员）删除书籍并清理其连带数据。
 
 ## Requirements
 

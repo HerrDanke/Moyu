@@ -1,7 +1,7 @@
 # novel-import Specification
 
 ## Purpose
-TBD - created by archiving change mvp-moyu. Update Purpose after archive.
+把本地 TXT 变成可阅读的书籍：编码探测、章节切分（含无标题时的兜底），以及原文备份。
 
 ## Requirements
 

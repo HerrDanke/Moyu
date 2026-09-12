@@ -1,7 +1,7 @@
 # user-admin Specification
 
 ## Purpose
-TBD - created by archiving change user-management. Update Purpose after archive.
+管理员维护账号：创建用户、重置密码、启停账号，以及删除用户时一并清理其阅读进度。
 
 ## Requirements
 

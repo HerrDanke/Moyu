@@ -100,7 +100,7 @@ npm run dev                       # http://127.0.0.1:5173
 ## 测试
 
 ```bash
-# 后端（115 passed 为基线）
+# 后端（117 passed 为基线）
 cd backend && .venv\Scripts\python -m pytest -q
 
 # 前端单元测试 + 生产构建（7 passed 为基线）
@@ -142,7 +142,7 @@ backend/                FastAPI + SQLAlchemy + SQLite
                         typing_stream（分批与服务端节流）
                         user_settings（思考强度档位定义与校验）
                         ratelimit（登录限速）
-  tests/                pytest（115 项：并发/编码/回滚/SSE/账号/隔离/迁移/设置/断点续读）
+  tests/                pytest（117 项：并发/编码/回滚/SSE/账号/隔离/迁移/设置/断点续读）
 frontend/               React + Vite + TS
   public/               favicon.svg / favicon-32x32.png / apple-touch-icon.png
   src/api/client.ts     REST + SSE 客户端
@@ -168,4 +168,5 @@ docs/HANDOFF.md         交接文档：产物索引、不可破坏的约定、�
 - **不调用任何 AI 服务**：所有"AI 感"由前端打字机 + 后端文案模板营造。
 - **会话可吊销**：Cookie 载荷含 `token_version`，改密/停用后旧会话立即失效（不必等过期）。
 - **进度推进不会被静默丢弃**：并发写入冲突时退化为直接写入并记日志——用户已经看到新章节，进度就必须跟上。
+- **续读时进度归前端所有**：「继续本章」不改章号，章内偏移由前端实时上报，服务端**不**把自己在请求时刻读到的旧偏移写回去——否则会把用户真正读到的位置回滚。
 - **首屏无主题闪烁**：主题与阅读宽度存在 localStorage，由 CSS 之前的内联脚本直接应用；因此它们**按浏览器保存**，而思考强度**按账号保存**。

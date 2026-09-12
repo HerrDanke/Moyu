@@ -1,7 +1,7 @@
 # auth Specification
 
 ## Purpose
-TBD - created by archiving change mvp-moyu. Update Purpose after archive.
+账号体系：登录与登出、可吊销的会话，以及首次部署时用一次性引导口令创建第一个管理员（共享访问密码已退役）。
 
 ## Requirements
 

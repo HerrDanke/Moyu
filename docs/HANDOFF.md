@@ -5,12 +5,13 @@
 
 ## 一句话现状
 
-一个可自托管的「伪装成 AI 聊天」的本地 TXT 小说阅读器，功能已完整（账号体系 / ChatGPT 式界面 / 章节目录 / 设置面板）、已多层测试、已推送到公开仓库并在真实 PVE 容器上运行。当前无进行中的 OpenSpec 变更（都已归档）。
+一个可自托管的「伪装成 AI 聊天」的本地 TXT 小说阅读器，功能已完整（账号体系 / ChatGPT 式界面 / 章节目录 / 断点续读 / 设置面板）、已多层测试、已推送到公开仓库并在真实 PVE 容器上运行。当前无进行中的 OpenSpec 变更（都已归档）。
 
 ## 产物索引（建议阅读顺序）
 
 | 想了解 | 去哪里看 |
 |---|---|
+| **在本仓库干活前必读**（怎么跑、架构、高风险约束、OpenSpec 工作流） | `AGENTS.md` |
 | 项目是什么、怎么部署、指令表与思考强度 | `README.md` |
 | **系统当前事实源** | `openspec/specs/`（7 个能力：`pseudo-ai-chat` `novel-import` `books` `progress` `auth` `user-admin` `ui-shell`） |
 | 某个功能为什么这么做、当时的取舍 | `openspec/changes/archive/<日期>-<名称>/`（proposal → design → tasks） |
@@ -50,7 +51,7 @@
 改动后至少跑前两组；涉及流式/前端交互时加跑 E2E。
 
 ```bash
-# 后端（115 passed 为基线）
+# 后端（117 passed 为基线）
 cd backend && .venv/Scripts/python.exe -m pytest -q
 
 # 前端单元测试 + 生产构建（7 passed + 构建成功为基线）

@@ -1,7 +1,7 @@
 # progress Specification
 
 ## Purpose
-TBD - created by archiving change mvp-moyu. Update Purpose after archive.
+按用户、按书记录阅读位置（章节号 + 章内字符偏移），并保证刷新、切书、断点续读、多标签页与多用户之间互不干扰。
 
 ## Requirements
 
@@ -19,6 +19,19 @@ TBD - created by archiving change mvp-moyu. Update Purpose after archive.
 - Then 记录 `chapter_offset`（章节内字符偏移）
 - When 再次打开该书
 - Then 从该断点继续渲染，并展示进度百分比
+
+#### Scenario: 偏移上报必须与章号一起提交
+- Given 前端打字机在逐字渲染时按秒节流上报阅读位置
+- When 调用 `PATCH /api/progress/{book_id}`
+- Then 请求体必须**同时**携带 `chapter_index` 与 `chapter_offset`
+- Then 只给偏移时，服务端会沿用库里的旧章号（服务端只在本章流正常结束后才写新章号），
+  于是中途「停止」会留下「旧章号 + 新偏移」的不一致行，之后按断点续读会跳到错误位置
+
+#### Scenario: 续读本章不推进进度
+- Given 用户在第 5 章读到章内偏移 1200
+- When 下达「继续本章」
+- Then 章号仍为第 5 章，且服务端**不**写回它在请求时刻读到的旧偏移
+- Then 章内偏移由前端的实时上报负责更新，避免把用户真正读到的位置回滚
 
 #### Scenario: 多标签页并发写进度
 - Given 两个标签页同时对同一本书推进章节

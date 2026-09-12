@@ -23,7 +23,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload               # http://127.0.0.1:8000
 
-.venv/Scripts/python.exe -m pytest -q                       # 全量（基线 115 passed）
+.venv/Scripts/python.exe -m pytest -q                       # 全量（基线 117 passed）
 .venv/Scripts/python.exe -m pytest tests/test_progress_advance.py -q   # 单个文件
 .venv/Scripts/python.exe -m pytest -q -k write_progress     # 按名称筛选
 ```
