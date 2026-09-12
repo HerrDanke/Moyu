@@ -11,6 +11,7 @@
 | `password_hash` | `算法$盐hex$派生密钥hex` |
 | `is_admin` | 布尔 |
 | `is_active` | 布尔（停用后不可登录，但保留其进度数据） |
+| **`token_version`** | 整数，默认 0；改密 / 停用 / 登出全部时自增，用于**吊销既有会话** |
 | `current_book_id` | 该用户当前的「当前书」（可空，FK → books，删除书时置空） |
 | `created_at` | 时间戳 |
 
@@ -39,10 +40,35 @@
 ## 鉴权与会话
 
 - `POST /api/auth/login`：`{username, password}` → 校验通过后写入签名 Cookie
-- **Cookie 内容包含 `user_id`**（itsdangerous 签名），每次请求解析出当前用户
-- `require_session` → `get_current_user`：解析 Cookie、确认用户存在且 `is_active`
-- `require_admin`：在 `get_current_user` 基础上校验 `is_admin`，否则 403
-- 用户被删除或停用后，其旧 Cookie 立即失效（每次请求都查库确认用户状态）
+- **Cookie 载荷包含 `user_id` 与 `token_version`**，每次请求解析后**查库确认**：用户存在、`is_active` 为真、且 `token_version` 与库中一致
+- 这样管理员重置密码或停用账号时，只需自增 `token_version`，**其既有 Cookie 在下一次请求立即失效**（否则旧 Cookie 可继续冒充长达 30 天）
+- `require_session` → `get_current_user`；`require_admin` 在其上校验 `is_admin`（`is_admin` 只从库读，绝不从 Cookie 取）
+- 旧版 `{ok: true}` 形态的 Cookie 一律视为无效 → 401
+
+## 启动守卫（评审补入，重要）
+
+退役 `ACCESS_PASSWORD` 会让既有的「默认密钥则拒绝启动」守卫**恒为假**，从而允许用默认 `SECRET_KEY` 启动 —— 攻击者拿到这个公开常量就能自签任意 `user_id` 的 Cookie，**完全绕过鉴权**。因此：
+
+1. 守卫条件改为与账号体系绑定：**只要存在任意用户，`SECRET_KEY` 为空或属于已知弱值集合即拒绝启动**（不再依赖 `ACCESS_PASSWORD`）。
+2. **无用户（`setup_required`）期间**，除 `/api/auth/login`、`/api/auth/status`、`/api/auth/setup` 外，**全部 `/api/*` 返回 401**。否则在首个管理员创建前，任何人都能读走整个书库与遗留进度。
+
+## 密码哈希的抗 DoS 约束（评审补入）
+
+scrypt 每约 16 MiB 内存，单进程 uvicorn 下并发登录可打满 CPU / 撑爆内存：
+
+- 哈希调用外包一层**全局并发信号量**（同时最多 2 个 KDF 在跑），超出排队而非并行
+- 密码字段设 `max_length`（512），超长输入在 schema 层就 422 拒绝，避免放大 KDF 开销
+- 用户不存在时**同样执行一次 dummy 哈希**，抹平「用户不存在 vs 密码错误」的响应时间差，防计时枚举
+
+## 登录防暴力破解
+
+单机自托管场景，做轻量防护即可：
+
+- 限速键取 **`(客户端 IP, username)`**，避免「攻击者换用户名喷洒即绕过」以及「反复错错把真实用户锁死」这两种失效模式
+- 采用**节流（递增延迟）而非硬锁**；同一键连续失败 5 次后进入退避窗口
+- 外加一个**全局登录令牌桶**，防止分布式喷洒
+- 失败响应统一为「用户名或密码错误」，不区分「用户不存在」与「密码错误」
+- 内存实现即可（当前单进程）；**一旦改为多 worker，此机制失效**，已记为扩容前置条件
 
 ## 首次运行引导（防抢注）
 
@@ -86,13 +112,14 @@
 
 环境变量：`ACCESS_PASSWORD` 退役；`docker-compose.yml` 不再强制它，只保留 `SECRET_KEY`。
 
-## 登录防暴力破解
+## 进度隔离的实现红线（评审补入）
 
-单机自托管场景，做一个轻量防护即可：
+`progress` 主键变为 `(user_id, book_id)` 后，**每一处进度读写都必须带 `user_id`**。已确认的高危漏点：
 
-- 同一 `username` 连续失败计数（内存字典），失败 5 次后锁定 60 秒
-- 不引入 Redis 或额外依赖
-- 失败响应统一为「用户名或密码错误」，不区分「用户不存在」与「密码错误」，避免用户名枚举
+- `services/store.py` 的 `get_current_book` 回退分支会按 `updated_at` **全库排序**取最近有进度的书 —— 不加 user 过滤会导致「B 继承 A 最近读的书」
+- `store.write_progress`、`chat_engine._progress`、`router/progress.py` 中的 `session.get(Progress, book_id)` 需全部改为 `(user_id, book_id)`
+
+凡遗漏一处即为跨用户读写。规格中已补负向场景（A 不得读到/写到 B 的进度）。
 
 ## 前端
 

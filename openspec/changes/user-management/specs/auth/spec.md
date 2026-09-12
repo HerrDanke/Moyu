@@ -32,13 +32,40 @@
 - When 管理员将其停用或删除
 - Then 该用户携带原 Cookie 的后续请求返回 401
 
+#### Scenario: 会话可被吊销
+- Given 用户 U 已登录并持有有效 Cookie
+- When 管理员重置 U 的密码，或 U 自己修改密码
+- Then U 原有的 Cookie 在下一次请求即返回 401，必须重新登录
+
+#### Scenario: 旧版 Cookie 一律无效
+- Given 存在升级前下发的、不携带 user_id 的旧 Cookie
+- When 携带它请求任意 `/api/*`
+- Then 返回 401
+
+#### Scenario: 不安全密钥拒绝启动
+- Given 系统中存在任意用户
+- When `SECRET_KEY` 为空或属于已知弱值/默认值
+- Then 应用拒绝启动并给出明确原因
+（说明：`ACCESS_PASSWORD` 退役后，原有的密钥守卫条件会失效，必须改为与账号体系绑定，否则可用默认密钥自签 Cookie 绕过鉴权。）
+
+#### Scenario: 未初始化期间不暴露任何数据
+- Given 数据库中还没有任何用户（`setup_required` 为真）
+- When 请求除 `/api/auth/login`、`/api/auth/status`、`/api/auth/setup` 之外的任意 `/api/*`
+- Then 返回 401，不得返回书库、章节、进度或搜索内容
+
 #### Scenario: 密码不以明文存储
 - Given 任意用户
 - Then 数据库中只保存「算法$盐$派生密钥」形式的哈希，不存在明文或可逆编码
 
-#### Scenario: 登录失败限速
-- Given 同一用户名连续 5 次登录失败
-- Then 该用户名在 60 秒内被拒绝登录（返回 429 或 401 附带限速提示）
+#### Scenario: 哈希计算有并发上限
+- Given 同时发起大量登录/建号/改密请求
+- When 并发超过设定阈值
+- Then 超出部分排队而非并行执行 KDF，服务不因内存或 CPU 被占满而不可用
+- Then 长度超过上限的密码在请求校验阶段即被拒绝
+
+#### Scenario: 登录失败限速且不锁定真实用户
+- Given 同一来源对同一用户名连续失败多次
+- Then 该键进入退避（递增延迟）而非硬锁，不影响其他用户名的正常登录
 
 ### Requirement: 首次运行引导
 **ID:** auth.first-run-setup
@@ -52,9 +79,15 @@
 
 #### Scenario: 引导需要一次性口令
 - Given 服务启动时库中无用户
-- Then 启动日志中打印一次性引导口令
+- Then 启动日志中打印一次性引导口令，且该口令由密码学安全随机源生成、有足够长度
 - When 提交引导表单但口令不匹配
-- Then 拒绝创建并返回 401
+- Then 返回 401，且**先校验口令再执行任何密码哈希计算**
+- Then `/api/auth/status` 的响应体中不包含该口令
+
+#### Scenario: 引导接口受限速约束
+- Given 库中无用户
+- When 对引导接口短时间内连续提交错误口令
+- Then 触发与登录一致的限速/退避，避免口令被暴力枚举
 
 #### Scenario: 引导成功后永久关闭
 - Given 已通过引导创建了首个管理员
