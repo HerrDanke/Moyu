@@ -21,8 +21,8 @@ test.describe("ChatGPT 式外壳", () => {
       expect(box.y).toBeLessThan(viewport.height * 0.8);
     }
 
-    // 点示例指令 → 进入阅读 → 空状态消失、输入框落到底部
-    await page.getByRole("button", { name: "下一章", exact: true }).click();
+    // 点工具条的「下一章」→ 进入阅读 → 空状态消失、输入框落到底部
+    await page.locator('[data-testid="toolbar-next"]').click();
     await expect(page.locator('[data-testid="empty-state"]')).toBeHidden({ timeout: 15_000 });
     await expect(page.locator('[data-testid="message-user"]')).toBeVisible({ timeout: 10_000 });
 

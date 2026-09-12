@@ -25,6 +25,8 @@ import type {
 } from "./types";
 import { MessageList } from "./components/MessageList";
 import { Composer } from "./components/Composer";
+import { ReadingToolbar } from "./components/ReadingToolbar";
+import { ChapterDrawer } from "./components/ChapterDrawer";
 import { Sidebar } from "./components/Sidebar";
 import { EmptyState } from "./components/EmptyState";
 import { LoginPage } from "./components/LoginPage";
@@ -53,6 +55,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [quickRead, setQuickRead] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  // 草稿提升到这里：手输与「跳转章节」的预填共用同一份真相
+  const [draft, setDraft] = useState("");
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(THEME_KEY) as Theme) || "light",
   );
@@ -339,6 +345,29 @@ export default function App() {
     setMessages((m) => m.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
   };
 
+  /** 「跳转章节」：预填输入框并聚焦，不发请求 —— 复用既有的「第 N 章」指令。 */
+  const handleJump = useCallback(() => {
+    setDraft("第 ");
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+  }, []);
+
+  /** 目录里点某一章：走既有指令，进度与流式输出都由原逻辑负责。 */
+  const handlePickChapter = useCallback(
+    (chapterIndex: number) => {
+      setTocOpen(false);
+      void handleSend(`第 ${chapterIndex} 章`);
+    },
+    // handleSend 每次渲染都会重建，这里用 ref 之外的简单方式：允许依赖它
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   /** 上报续读偏移：只按章节正文字符数计算，并把服务端返回的进度回写本地。 */
   const handleProgressReport = useCallback((messageId: string, revealed: number) => {
     const msg = messagesRef.current.find((m) => m.id === messageId);
@@ -446,7 +475,6 @@ export default function App() {
               bookTitle={currentBook.title}
               chapterIndex={progress.chapter_index}
               totalChapters={currentBook.total_chapters}
-              onCommand={handleSend}
             />
           ) : (
             <div className="empty-state" data-testid="empty-state">
@@ -463,9 +491,32 @@ export default function App() {
         )}
 
         <div className="composer-wrap">
-          <Composer streaming={streaming} onSend={handleSend} onStop={handleStop} />
+          <ReadingToolbar
+            sendingDisabled={streaming}
+            onSend={handleSend}
+            onOpenToc={() => setTocOpen(true)}
+            onJump={handleJump}
+          />
+          <Composer
+            streaming={streaming}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSend={handleSend}
+            onStop={handleStop}
+            inputRef={composerRef}
+          />
         </div>
       </main>
+
+      {tocOpen && (
+        <ChapterDrawer
+          bookId={currentId}
+          bookTitle={currentBook?.title ?? ""}
+          currentIndex={progress?.chapter_index ?? null}
+          onPick={handlePickChapter}
+          onClose={() => setTocOpen(false)}
+        />
+      )}
     </div>
   );
 }

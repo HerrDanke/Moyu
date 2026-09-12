@@ -71,6 +71,24 @@ export async function importNovel(page: Page, tag = "e2e") {
   await expect(page.getByText(/已导入/)).toBeVisible({ timeout: 15_000 });
 }
 
+/** 生成一本多章的书，用于验证目录的窗口化（只渲染可视区域）。 */
+export async function importGeneratedNovel(
+  page: Page,
+  chapterCount: number,
+  tag = "big",
+) {
+  const parts: string[] = [];
+  for (let i = 1; i <= chapterCount; i += 1) {
+    parts.push(`第${i}章 标题${i}\n这是第 ${i} 章的正文内容。\n`);
+  }
+  const tmp = join(tmpdir(), `moyu-${tag}-${Date.now()}.txt`);
+  writeFileSync(tmp, parts.join("\n"), "utf-8");
+  await page.locator('[data-testid="import-input"]').setInputFiles(tmp);
+  await expect(page.getByText(new RegExp(`共 ${chapterCount} 章`))).toBeVisible({
+    timeout: 30_000,
+  });
+}
+
 /** 解析侧栏进度里的「本章 X%」；<1% 记作 0.5，便于断言“已经开始推进”。 */
 export async function readingPercent(page: Page) {
   const text = (await page.locator('[data-testid="sidebar-progress"]').textContent()) ?? "";
