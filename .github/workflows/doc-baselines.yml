@@ -1,0 +1,23 @@
+name: 文档基线一致性
+
+# 存在的理由：曾经出现「加了两条测试后忘记回改文档基线」这类漂移。
+# 没有任何测试会抓它，只能靠人记得——这个工作流把它变成会自动失败的检查。
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check-doc-baselines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 守卫是零依赖的标准库脚本：不需要 pip install，也不需要 npm ci。
+      # 它同时校验三套测试的基线、HANDOFF 的约定条数、specs 的能力数量，以及 TBD 占位符。
+      - name: 校验文档声称的数字与代码一致
+        run: python scripts/check_doc_baselines.py

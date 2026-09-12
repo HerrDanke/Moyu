@@ -58,6 +58,12 @@ frontend/test-results/
 .forge/
 .gemini/
 .github/
+# 例外：只放行我们自己的 CI workflow。
+# gitignore 的规则是「目录被忽略后不再进入」，所以要按下面的顺序写：
+# 先放行目录本身让 git 肯进去，再把目录内一切重新忽略，唯独放行 workflows/。
+!.github/
+.github/*
+!.github/workflows/
 .hermes/
 .iflow/
 .junie/

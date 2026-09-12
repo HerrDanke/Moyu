@@ -77,6 +77,33 @@ docker compose logs | grep 引导口令         # 首次启动打印一次性引
 `assets/index-<hash>.js` 是否与本地 `npm run build` 的哈希一致——这是「部署的确实是验证过的那份代码」
 最直接的证据。详见 [docs/HANDOFF.md](docs/HANDOFF.md) 的「部署与运维」。
 
+### 文档一致性守卫
+
+```bash
+python scripts/check_doc_baselines.py       # 零依赖（仅标准库），约一两秒
+```
+
+它校验文档里**声称的数字**与实际是否一致：三套测试的基线（pytest / vitest / Playwright）、
+HANDOFF 的约定条数、specs 的能力数量，以及 specs 里不得残留 `TBD` 占位符。
+
+**改完测试、或归档/改写 spec 之后跑一次。** CI（`.github/workflows/doc-baselines.yml`）也会在推送与 PR 时跑。
+
+三个刻意的设计，改动它之前请先理解：
+
+1. **零依赖**：纯标准库计数，所以 CI 里不需要 `pip install` / `npm ci`，本地也能随手跑。
+2. **宁吵闹不猜**：遇到无法静态确定的构造（非字面量 `parametrize`、`it.each`、fixture 级 `params`、
+   测试类）会**报错退出**，而不是给出一个假的「一致」。真遇到这种用例，请扩展脚本的计数口径，
+   而不是把守卫放宽。
+3. **文档措辞变了也算失败**：每条声称都用正则精确匹配且要求**恰好命中一次**。你改写文档措辞后
+   守卫会失败并提示「同步脚本里的正则」——这是有意的：否则守卫会静默失效，那比没有守卫更危险。
+
+注意：脚本的 pytest 计数是**静态**的（`ast` 解析 + 展开字面量 parametrize）。它必须与
+`pytest --collect-only` 的结果一致；改完脚本后请用下面这条交叉核对一次：
+
+```bash
+cd backend && .venv/Scripts/python.exe -m pytest --collect-only -q | tail -1
+```
+
 ## 架构
 
 ### 后端分层（`backend/app/`）
