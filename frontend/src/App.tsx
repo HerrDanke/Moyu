@@ -13,17 +13,25 @@ import {
   selectBook,
   streamChat,
 } from "./api/client";
-import type { Book, ChapterMeta, ChatMessage, Progress } from "./types";
-import { newId } from "./utils/id";
+import type {
+  Book,
+  ChapterMeta,
+  ChatMessage,
+  Progress,
+  ReadingMode,
+  Theme,
+} from "./types";
 import { MessageList } from "./components/MessageList";
-import { ChatInput } from "./components/ChatInput";
-import { BookSelector } from "./components/BookSelector";
-import { ChapterProgress } from "./components/ChapterProgress";
+import { Composer } from "./components/Composer";
+import { Sidebar } from "./components/Sidebar";
+import { EmptyState } from "./components/EmptyState";
 import { LoginPage } from "./components/LoginPage";
-import { Toolbar } from "./components/Toolbar";
+import { newId } from "./utils/id";
+import { formatProgressLabel } from "./utils/progress";
 
 const THEME_KEY = "moyu_theme";
 const BOOK_KEY = "moyu_current_book";
+const READING_KEY = "moyu_reading_mode";
 
 type AuthState = "checking" | "login" | "ok";
 
@@ -32,14 +40,18 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [currentId, setCurrentId] = useState<number | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [progressMap, setProgressMap] = useState<Record<number, Progress>>({});
   const [chapters, setChapters] = useState<ChapterMeta[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [quickRead, setQuickRead] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(
-    () => (localStorage.getItem(THEME_KEY) as "light" | "dark") || "light",
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(
+    () => (localStorage.getItem(THEME_KEY) as Theme) || "light",
+  );
+  const [readingMode, setReadingMode] = useState<ReadingMode>(
+    () => (localStorage.getItem(READING_KEY) as ReadingMode) || "wide",
   );
 
   const abortRef = useRef<(() => void) | null>(null);
@@ -50,12 +62,18 @@ export default function App() {
   messagesRef.current = messages;
   currentIdRef.current = currentId;
 
+  const progress = currentId != null ? (progressMap[currentId] ?? null) : null;
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
-  // 会话过期时回到登录页
+  useEffect(() => {
+    document.documentElement.dataset.reading = readingMode;
+    localStorage.setItem(READING_KEY, readingMode);
+  }, [readingMode]);
+
   useEffect(() => {
     onUnauthorized(() => setAuth("login"));
   }, []);
@@ -71,39 +89,48 @@ export default function App() {
     })();
   }, []);
 
+  /** 拉取所有书的进度，用于侧栏每本书的进度标签 */
+  const loadAllProgress = useCallback(async (list: Book[]) => {
+    const results = await Promise.all(
+      list.map(async (b) => {
+        try {
+          return [b.id, await getProgress(b.id)] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const map: Record<number, Progress> = {};
+    for (const r of results) if (r) map[r[0]] = r[1];
+    setProgressMap(map);
+  }, []);
+
   useEffect(() => {
     if (auth !== "ok") return;
     (async () => {
       const list = await listBooks();
       setBooks(list);
+      void loadAllProgress(list);
       const saved = Number(localStorage.getItem(BOOK_KEY));
       const initial = list.find((b) => b.id === saved)?.id ?? list[0]?.id ?? null;
       setCurrentId(initial);
       if (initial != null) void selectBook(initial).catch(() => {});
     })();
-  }, [auth]);
+  }, [auth, loadAllProgress]);
 
   useEffect(() => {
     if (currentId == null) {
-      setProgress(null);
       setChapters([]);
       return;
     }
     (async () => {
-      const [p, cs] = await Promise.all([getProgress(currentId), getChapters(currentId)]);
-      setProgress(p);
-      setChapters(cs);
+      try {
+        setChapters(await getChapters(currentId));
+      } catch {
+        setChapters([]);
+      }
     })();
   }, [currentId]);
-
-  const refreshProgress = useCallback(async (id: number | null) => {
-    if (id == null) return;
-    try {
-      setProgress(await getProgress(id));
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   const handleLogin = async (password: string) => {
     setLoginError(null);
@@ -121,9 +148,11 @@ export default function App() {
     setMessages([]);
   };
 
-  /** 切换当前书：同时同步到后端，保证对话引擎与界面一致。 */
+  /** 切书 = 开新会话：清空消息区并进入该书的空状态。 */
   const chooseBook = useCallback((id: number | null) => {
     setCurrentId(id);
+    setMessages([]);
+    setSidebarOpen(false);
     if (id != null) {
       localStorage.setItem(BOOK_KEY, String(id));
       void selectBook(id).catch(() => {});
@@ -136,14 +165,17 @@ export default function App() {
       const res = await importBook(file);
       const list = await listBooks();
       setBooks(list);
-      chooseBook(res.book_id);
+      void loadAllProgress(list);
+      setCurrentId(res.book_id);
+      localStorage.setItem(BOOK_KEY, String(res.book_id));
+      setSidebarOpen(false);
       setMessages([
         {
           id: newId(),
           role: "assistant",
           text: `已导入《${res.title}》，共 ${res.total_chapters} 章。${
             res.notice ? res.notice + "。" : ""
-          }回复「下一章」开始阅读。`,
+          }说「下一章」开始阅读。`,
         },
       ]);
     } catch (e) {
@@ -166,12 +198,21 @@ export default function App() {
       await deleteBook(id);
       const list = await listBooks();
       setBooks(list);
+      void loadAllProgress(list);
       chooseBook(list[0]?.id ?? null);
-      setMessages([]);
     } finally {
       setBusy(false);
     }
   };
+
+  const refreshProgressOf = useCallback(async (bookId: number) => {
+    try {
+      const p = await getProgress(bookId);
+      setProgressMap((prev) => ({ ...prev, [bookId]: p }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const handleSend = async (text: string) => {
     const userMsg: ChatMessage = { id: newId(), role: "user", text };
@@ -197,17 +238,25 @@ export default function App() {
         text,
         (ev) => {
           switch (ev.type) {
-            case "book":
-              // 服务端认定的「当前书」可能与前端不同（例如「读《x》」）
+            case "book": {
+              const changed = ev.id !== currentIdRef.current;
               setCurrentId(ev.id);
               localStorage.setItem(BOOK_KEY, String(ev.id));
               update({ bookId: ev.id });
+              if (changed) {
+                // 通过指令切书同样视为新会话：丢掉旧书的消息，只保留本次指令与回复
+                setMessages((m) =>
+                  m.filter((msg) => msg.id === asstId || msg.id === userMsg.id),
+                );
+              }
               break;
+            }
             case "meta":
               update((prev) => ({
                 ...prev,
                 startOffset: ev.start_offset,
                 charCount: ev.char_count,
+                chapterIndex: ev.chapter_index,
               }));
               break;
             case "thinking":
@@ -237,7 +286,8 @@ export default function App() {
       abortRef.current = abort;
       await done;
       update({ streaming: false });
-      await refreshProgress(currentIdRef.current);
+      const id = currentIdRef.current;
+      if (id != null) await refreshProgressOf(id);
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         update({ streaming: false });
@@ -250,16 +300,13 @@ export default function App() {
     }
   };
 
-  const handleSkip = () => {
+  const handleStop = () => {
     abortRef.current?.();
     setStreaming(false);
     setMessages((m) => m.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
   };
 
-  /**
-   * 上报续读偏移：只按「章节正文字符数」计算，剔除标题与收尾文案，
-   * 且只在该消息所属书 == 当前书时才上报。
-   */
+  /** 上报续读偏移：只按章节正文字符数计算，并把服务端返回的进度回写本地。 */
   const handleProgressReport = useCallback((messageId: string, revealed: number) => {
     const msg = messagesRef.current.find((m) => m.id === messageId);
     if (!msg || msg.startOffset === undefined || msg.charCount === undefined) return;
@@ -275,13 +322,9 @@ export default function App() {
     if (now - lastPatchRef.current < 1000) return;
     lastPatchRef.current = now;
     const offset = msg.startOffset + revealedBody;
-    // 关键：把服务端返回的进度回写本地 state，否则顶部百分比会冻结在旧值，
-    // 只有刷新页面才会更新（进度其实早已落库）。
     void patchProgress(bookId, { chapter_offset: offset })
       .then((updated) => {
-        setProgress((prev) =>
-          prev && prev.book_id === updated.book_id ? updated : prev,
-        );
+        setProgressMap((prev) => ({ ...prev, [updated.book_id]: updated }));
       })
       .catch(() => {});
   }, []);
@@ -296,53 +339,89 @@ export default function App() {
     return chapters.find((c) => c.index_no === progress.chapter_index)?.char_count ?? 0;
   }, [chapters, progress]);
 
+  const progressLabel = useMemo(() => {
+    if (!currentBook || !progress) return null;
+    return formatProgressLabel(
+      progress.chapter_index,
+      currentBook.total_chapters,
+      progress.chapter_offset,
+      currentChapterChars,
+    );
+  }, [currentBook, progress, currentChapterChars]);
+
+  const progressByBook = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const [id, p] of Object.entries(progressMap)) map[Number(id)] = p.chapter_index;
+    return map;
+  }, [progressMap]);
+
   if (auth === "checking") return <div className="loading">加载中…</div>;
   if (auth === "login") return <LoginPage onSubmit={handleLogin} error={loginError} />;
 
+  const isEmpty = messages.length === 0;
+
   return (
-    <div className="app">
-      <header className="app-header">
-        <div className="header-left">
-          <span className="logo">墨鱼</span>
-          {currentBook && progress && (
-            <ChapterProgress
+    <div className="shell">
+      <Sidebar
+        books={books}
+        currentId={currentId}
+        progressByBook={progressByBook}
+        onSelect={chooseBook}
+        onImport={handleImport}
+        onDelete={handleDelete}
+        busy={busy}
+        progressLabel={progressLabel}
+        theme={theme}
+        onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        quickRead={quickRead}
+        onToggleQuickRead={() => setQuickRead((q) => !q)}
+        readingMode={readingMode}
+        onToggleReadingMode={() =>
+          setReadingMode((m) => (m === "wide" ? "compact" : "wide"))
+        }
+        onLogout={handleLogout}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <main className={`main${isEmpty ? " is-empty" : ""}`}>
+        <button
+          type="button"
+          className="icon-btn sidebar-open"
+          data-testid="sidebar-toggle"
+          aria-label="打开侧栏"
+          aria-expanded={sidebarOpen}
+          onClick={() => setSidebarOpen(true)}
+        >
+          ☰
+        </button>
+
+        {isEmpty ? (
+          currentBook && progress ? (
+            <EmptyState
               bookTitle={currentBook.title}
               chapterIndex={progress.chapter_index}
               totalChapters={currentBook.total_chapters}
-              offset={progress.chapter_offset}
-              chapterChars={currentChapterChars}
+              onCommand={handleSend}
             />
-          )}
+          ) : (
+            <div className="empty-state" data-testid="empty-state">
+              <h1 className="empty-title">还没有书</h1>
+              <p className="empty-sub">从左侧「导入新书」添加一本 TXT 小说</p>
+            </div>
+          )
+        ) : (
+          <MessageList
+            messages={messages}
+            animate={!quickRead}
+            onProgress={handleProgressReport}
+          />
+        )}
+
+        <div className="composer-wrap">
+          <Composer streaming={streaming} onSend={handleSend} onStop={handleStop} />
         </div>
-        <Toolbar
-          theme={theme}
-          onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          quickRead={quickRead}
-          onToggleQuickRead={() => setQuickRead((q) => !q)}
-          onLogout={handleLogout}
-        />
-      </header>
-
-      <div className="book-bar">
-        <BookSelector
-          books={books}
-          currentId={currentId}
-          onSelect={chooseBook}
-          onImport={handleImport}
-          onDelete={handleDelete}
-          busy={busy}
-        />
-      </div>
-
-      <main className="chat-area">
-        <MessageList
-          messages={messages}
-          animate={!quickRead}
-          onProgress={handleProgressReport}
-        />
       </main>
-
-      <ChatInput streaming={streaming} onSend={handleSend} onSkip={handleSkip} />
     </div>
   );
 }

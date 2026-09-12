@@ -17,9 +17,10 @@ export function LoginPage({ onSubmit, error }: Props) {
           if (password) onSubmit(password);
         }}
       >
-        <h1>墨鱼 · 阅读</h1>
+        <h1>墨鱼</h1>
         <p className="subtitle">请输入访问密码</p>
         <input
+          data-testid="login-password"
           type="password"
           value={password}
           placeholder="访问密码"
@@ -27,7 +28,7 @@ export function LoginPage({ onSubmit, error }: Props) {
           onChange={(e) => setPassword(e.target.value)}
         />
         {error && <p className="error">{error}</p>}
-        <button className="btn" type="submit">
+        <button className="btn" data-testid="login-submit" type="submit">
           进入
         </button>
       </form>

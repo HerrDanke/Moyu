@@ -28,6 +28,11 @@ export interface ImportResult {
 
 export type Role = "user" | "assistant";
 
+export type Theme = "light" | "dark";
+
+/** 阅读列宽度：宽松（中文长阅读，默认）／紧凑（更接近 ChatGPT） */
+export type ReadingMode = "wide" | "compact";
+
 export interface ChatMessage {
   id: string;
   role: Role;
@@ -44,6 +49,8 @@ export interface ChatMessage {
   charCount?: number;
   /** 本次消息所属书目（用于防止跨书写进度） */
   bookId?: number;
+  /** 本次展示的章节号（用于无障碍播报） */
+  chapterIndex?: number;
 }
 
 export type StreamEvent =

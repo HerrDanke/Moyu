@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>墨鱼 · 阅读</title>
+    <script>
+      // 在样式生效前定好主题与阅读宽度，避免首屏闪烁
+      (function () {
+        try {
+          var t = localStorage.getItem("moyu_theme");
+          document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
+          var r = localStorage.getItem("moyu_reading_mode");
+          document.documentElement.dataset.reading = r === "compact" ? "compact" : "wide";
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.reading = "wide";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
