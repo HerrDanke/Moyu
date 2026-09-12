@@ -2,7 +2,27 @@ from __future__ import annotations
 
 import json
 
+from app.services.typing_stream import split_sentences
+
 from .conftest import import_sample
+
+
+def test_split_sentences_round_trips_without_losing_newlines():
+    """断句必须能原样拼回，尤其不能吞掉段落换行。"""
+    text = "夜色如墨，韩立站在青石阶前。\n灵光流转，一道玉符悬于半空。"
+    assert "".join(split_sentences(text)) == text
+
+    multi = "第一段第一句。\n\n第二段。\n第三段还有一句！"
+    assert "".join(split_sentences(multi)) == multi
+
+
+def test_stream_preserves_paragraph_newline(client):
+    """回归：段落换行曾在流式阶段被 strip 过滤掉，导致长章节糊成一段。"""
+    import_sample(client)
+    events = _events(client.post("/api/chat", json={"message": "下一章", "quick_read": True}).text)
+    joined = "".join(e["text"] for e in events if e["type"] == "chunk")
+    assert "\n" in joined
+    assert "山门。\n灵光" in joined
 
 
 def _events(body: str) -> list[dict]:

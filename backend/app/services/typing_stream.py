@@ -19,7 +19,13 @@ QUICK_READ_HEAD_BATCHES = 3
 
 
 def split_sentences(text: str) -> list[str]:
-    parts = [p for p in _SENTENCE_SPLIT.split(text) if p.strip()]
+    """按句切分，且保证 `"".join(结果) == text`。
+
+    注意：不能用 `p.strip()` 过滤——`re.split` 会把「只含换行」的片段单独切出来，
+    strip 后判空即被丢弃，导致章节的段落分隔在流式阶段就被抹掉（长章节会糊成一坨）。
+    这里只丢掉真正的空串。
+    """
+    parts = [p for p in _SENTENCE_SPLIT.split(text) if p != ""]
     return parts or ([text] if text else [])
 
 
