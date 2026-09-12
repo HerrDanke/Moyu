@@ -28,14 +28,17 @@ class ThinkingLevel:
 
 
 # 档位越高 = 思考越"深" = 出字越慢。叙事上贴合「伪装成大模型」。
+# 注意：速度值同时决定**服务端分批间隔**与**前端打字机速率**（前端按倍率缩放），
+# 否则光调服务端没用——打字机本身有 125 字/秒的硬下限。
 THINKING_LEVELS: tuple[ThinkingLevel, ...] = (
-    ThinkingLevel(1, "迅捷", 2.0, "几乎不停顿，一口气往外走"),
-    ThinkingLevel(2, "标准", 1.0, "默认节奏"),
-    ThinkingLevel(3, "深入", 0.6, "一句一句慢慢斟酌"),
-    ThinkingLevel(4, "沉思", 0.35, "明显停顿，像是在深思"),
+    ThinkingLevel(1, "极速", 4.0, "几乎瞬间铺满，像在快速扫读"),
+    ThinkingLevel(2, "迅捷", 2.0, "几乎不停顿，一口气往外走"),
+    ThinkingLevel(3, "标准", 1.0, "默认节奏"),
+    ThinkingLevel(4, "深入", 0.6, "一句一句慢慢斟酌"),
+    ThinkingLevel(5, "沉思", 0.35, "明显停顿，像是在深思"),
 )
 
-DEFAULT_LEVEL = 2
+DEFAULT_LEVEL = 3
 
 
 def levels_payload() -> list[dict]:

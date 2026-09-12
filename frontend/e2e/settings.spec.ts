@@ -40,15 +40,15 @@ test.describe("设置面板与思考强度", () => {
     await expect(page.locator('[data-testid="settings-button"]')).toBeFocused();
   });
 
-  test("思考强度有四个档位", async ({ page }) => {
+  test("思考强度有五个档位（含更快的「极速」）", async ({ page }) => {
     test.setTimeout(60_000);
     await login(page);
     await openSettings(page);
 
     const slider = page.locator('[data-testid="thinking-slider"]');
     await expect(slider).toHaveAttribute("min", "1");
-    await expect(slider).toHaveAttribute("max", "4");
-    for (const name of ["迅捷", "标准", "深入", "沉思"]) {
+    await expect(slider).toHaveAttribute("max", "5");
+    for (const name of ["极速", "迅捷", "标准", "深入", "沉思"]) {
       await expect(page.locator(".slider-ticks")).toContainText(name);
     }
   });
@@ -57,7 +57,7 @@ test.describe("设置面板与思考强度", () => {
     test.setTimeout(60_000);
     await login(page);
 
-    await setThinkingLevel(page, 3);
+    await setThinkingLevel(page, 4);
     await expect
       .poll(async () => {
         await page.locator('[data-testid="settings-button"]').click();
@@ -72,7 +72,7 @@ test.describe("设置面板与思考强度", () => {
     await expect(page.locator('[data-testid="thinking-label"]')).toHaveText("深入");
   });
 
-  test("思考强度真的改变出字节奏（沉思 明显慢于 迅捷）", async ({ page }) => {
+  test("思考强度真的改变出字节奏（沉思 明显慢于 极速）", async ({ page }) => {
     test.setTimeout(180_000);
     await login(page);
     await importPacedNovel(page, "pace");
@@ -80,10 +80,10 @@ test.describe("设置面板与思考强度", () => {
     await setThinkingLevel(page, 1);
     const fast = await measureStreamMs(page, "第 1 章");
 
-    await setThinkingLevel(page, 4);
+    await setThinkingLevel(page, 5);
     const slow = await measureStreamMs(page, "第 2 章");
 
-    console.log(`迅捷=${fast}ms 沉思=${slow}ms`);
+    console.log(`极速=${fast}ms 沉思=${slow}ms`);
     expect(slow).toBeGreaterThan(fast * 1.8);
   });
 });

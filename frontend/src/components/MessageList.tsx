@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage } from "../types";
 import { useTypingEffect } from "../hooks/useTypingEffect";
 
 interface BubbleProps {
   message: ChatMessage;
   animate: boolean;
+  charsPerTick: number;
   onProgress?: (messageId: string, revealedLength: number) => void;
 }
 
@@ -28,8 +29,8 @@ export function splitAssistantText(text: string, bodyStart?: number) {
   return { title, body: rest, footer };
 }
 
-function AssistantMessage({ message, animate, onProgress }: BubbleProps) {
-  const { displayed, isTyping, skip } = useTypingEffect(message.text);
+function AssistantMessage({ message, animate, charsPerTick, onProgress }: BubbleProps) {
+  const { displayed, isTyping, skip } = useTypingEffect(message.text, charsPerTick);
   const shown = animate ? displayed : message.text;
   const typing = animate && isTyping;
   const generating = !!message.streaming && !shown.trim();
@@ -108,12 +109,26 @@ function UserMessage({ message }: { message: ChatMessage }) {
 interface Props {
   messages: ChatMessage[];
   animate?: boolean;
+  /** 当前「思考强度」对应的速度倍率：用来缩放打字机速率 */
+  typingSpeed?: number;
   onProgress?: (messageId: string, revealedLength: number) => void;
 }
 
-export function MessageList({ messages, animate = true, onProgress }: Props) {
+export function MessageList({
+  messages,
+  animate = true,
+  typingSpeed = 1,
+  onProgress,
+}: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+
+  // 打字机速率随「思考强度」缩放：倍率 1.0 → 2 字/16ms（原行为），4.0 → 8 字/16ms。
+  // 不缩放的话，无论服务端多快，长章节都会被 125 字/秒的动画拖住。
+  const charsPerTick = useMemo(
+    () => Math.min(24, Math.max(1, Math.round(2 * typingSpeed))),
+    [typingSpeed],
+  );
 
   const lastStreaming = [...messages].reverse().find((m) => m.role === "assistant" && m.streaming);
 
@@ -141,6 +156,7 @@ export function MessageList({ messages, animate = true, onProgress }: Props) {
               key={m.id}
               message={m}
               animate={animate}
+              charsPerTick={charsPerTick}
               onProgress={onProgress}
             />
           ),

@@ -542,6 +542,7 @@ export default function App() {
           <MessageList
             messages={messages}
             animate={!quickRead}
+            typingSpeed={appSettings?.typing_speed ?? 1}
             onProgress={handleProgressReport}
           />
         )}

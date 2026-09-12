@@ -11,7 +11,7 @@ def test_defaults_fall_back_to_server_value(client):
     body = client.get("/api/settings").json()
     assert body["typing_speed_from_user"] is False
     assert body["typing_speed"] == 0.0  # 测试环境把 typing_speed 设为 0（不节流）
-    assert len(body["levels"]) == 4
+    assert len(body["levels"]) == 5
 
 
 def test_set_and_persist_per_user(client, other_client):
@@ -19,7 +19,7 @@ def test_set_and_persist_per_user(client, other_client):
     assert resp.status_code == 200
     assert resp.json()["typing_speed"] == 0.6
     assert resp.json()["typing_speed_from_user"] is True
-    assert resp.json()["thinking_level"] == 3  # 深入
+    assert resp.json()["thinking_level"] == 4  # 深入
 
     # 同一用户再读，仍然生效
     assert client.get("/api/settings").json()["typing_speed"] == 0.6
